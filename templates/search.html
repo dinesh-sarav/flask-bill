@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Search Results for "{{ query }}"</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+
+    <h2>Search Results for "{{ query }}"</h2>
+
+    {% if products %}
+        <table class="table table-bordered text-center">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Unit</th>
+                    <th>Price</th>
+                    <th>Add Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                    {% for variant in product.variants %}
+                    <tr>
+                        <td>{{ product.name }}</td>
+                        <td>{{ variant.unit }}</td>
+                        <td>₹{{ variant.price }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('add_to_cart_with_quantity') }}" class="d-flex justify-content-center">
+                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
+                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 80px;">
+                                <button type="submit" class="btn btn-sm btn-primary">Add</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No products found.</p>
+    {% endif %}
+
+    <hr>
+
+    {% if cart_items %}
+    <h4>Current Cart</h4>
+    <table class="table table-bordered text-center">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Variant</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in cart_items %}
+            <tr>
+                <td>{{ item.product.name }}</td>
+                <td>{{ item.variant.unit }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>₹{{ item.variant.price }}</td>
+                <td>₹{{ item.subtotal }}</td>
+                <td>
+                    <a href="{{ url_for('increase_quantity', variant_id=item.variant.id) }}" class="btn btn-sm btn-success">+</a>
+                    <a href="{{ url_for('decrease_quantity', variant_id=item.variant.id) }}" class="btn btn-sm btn-warning">-</a>
+                    <a href="{{ url_for('remove_from_cart', variant_id=item.variant.id) }}" class="btn btn-sm btn-danger">Remove</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h5>Total: ₹{{ total }}</h5>
+
+    <div class="d-flex gap-2 mb-4">
+        <a href="{{ url_for('view_cart') }}" class="btn btn-primary">Go to Checkout</a>
+        <a href="{{ url_for('clear_cart') }}" class="btn btn-danger">Clear Cart</a>
+        <a href="{{ url_for('home') }}" class="btn btn-secondary">Back to Home</a>
+    </div>
+    {% endif %}
+
+    <div class="text-center mt-3">
+        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Home Page</a>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

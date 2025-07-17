@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice {{ invoice.invoice_id }}</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 30px;
+            background: white;
+            color: black;
+        }
+
+        .invoice-box {
+            max-width: 400px;
+            margin: auto;
+            padding: 10px;
+        }
+
+        .store-header {
+            text-align: center;
+            font-size: 14px;
+            line-height: 1.2;
+            margin: 0; /* removes margin */
+            padding: 0; /* removes padding */
+        }
+
+        .store-header div {
+            margin: 0;
+            padding: 0;
+        }
+
+        .store-header .bold {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .info, .footer {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead th {
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            padding: 4px;
+            text-align: left;
+        }
+
+        tbody td {
+            border-bottom: 1px dashed #aaa;
+            padding: 4px;
+        }
+
+        .totals, .section {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .bold {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<div class="invoice-box">
+
+    <!-- 🏪 Store Name and Header (no space below now) -->
+    <div class="store-header">
+        <div class="bold">NEELAN STORE</div>
+        <div>41, Kamaraj High Road, New Perungalathur</div>
+        <div>Chennai - 600063</div>
+        <div>TRUSTED QUALITY SHOPPING</div>
+        <div>TEL NO: 22741234 / 1234432</div>
+        <div>fssai NO : 1234567876543</div>
+        <div><b>GSTIN NO : 234GFD3456YHG54D</b></div>
+        <div class="bold">Wallet Bill</div>
+    </div>
+
+    <!-- 🧾 Invoice Info -->
+    <div class="info">
+        Bill No: <strong>BILL-{{ "%03d"|format(invoice.id) }}</strong> Date: {{ date_str }} Time: {{ time_str }}
+    </div>
+
+    <!-- 📦 Product Table -->
+    <table>
+        <thead>
+            <tr>
+                <th>PARTICULARS</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.qty }}</td>
+                <td>{{ '%.2f'|format(item.price) }}</td>
+                <td>{{ '%.2f'|format(item.subtotal) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 🧮 Totals -->
+    <div class="totals">
+        T.Items: {{ total_items }}<br>
+        Tot. Qty: {{ total_qty }}<br>
+        Total: ₹ {{ '%.2f'|format(total) }}
+    </div>
+
+    <!-- 💰 Payment Info -->
+    <div class="section">
+        Amount Tendered: 0.00
+        Balance: 0.00
+        Total Discount: {{ invoice.discount or "0.00" }}
+    </div>
+
+</div>
+</body>
+</html>
+
+    <!--<div class="tax">
+        TOTAL TAX VALUE: ₹{{ '%.2f'|format(invoice.tax_total or 0.0) }}<br>
+        Your Savings: 0.00<br><br>
+        <table>
+            <tbody>
+                {% for tax in invoice.tax_details %}
+                <tr>
+                    <td>{{ tax.sgst_percent }}%</td>
+                    <td>{{ '%.2f'|format(tax.sgst_amount) }}</td>
+                    <td>{{ tax.cgst_percent }}%</td>
+                    <td>{{ '%.2f'|format(tax.cgst_amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div> -->
+
+

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sales Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+    <h2 class="mb-4">📊 Sales Report</h2>
+
+    <!-- Date Filter -->
+    <form method="get" class="row g-3 mb-4">
+        <div class="col-auto">
+            <label for="start" class="form-label">From</label>
+            <input type="date" id="start" name="start" value="{{ start }}" class="form-control">
+        </div>
+        <div class="col-auto">
+            <label for="end" class="form-label">To</label>
+            <input type="date" id="end" name="end" value="{{ end }}" class="form-control">
+        </div>
+        <div class="col-auto align-self-end">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+        <div class="col-auto align-self-end">
+            <a href="{{ url_for('download_sales_csv') }}" class="btn btn-outline-success">Download CSV</a>
+            <a href="{{ url_for('download_sales_pdf') }}" class="btn btn-outline-danger">Download PDF</a>
+        </div>
+    </form>
+
+    <!-- Invoice Table -->
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th>Total (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr>
+                    <td>{{ invoice.id }}</td>
+                    <td>{{ invoice.customer.name }}</td>
+                    <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ invoice.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mt-5 mb-4">
+        <div class="col-md-4">
+            <div class="alert alert-info text-center">
+                <strong>Today:</strong> ₹{{ daily_total }}
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="alert alert-warning text-center">
+                <strong>This Week:</strong> ₹{{ weekly_total }}
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="alert alert-success text-center">
+                <strong>This Month:</strong> ₹{{ monthly_total }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sales Breakdown -->
+    <h4>🧑‍💼 Sales by Customer</h4>
+    <ul>
+        {% for customer in customers %}
+            <li>{{ customer.name }} - ₹{{ customer.total_sales }}</li>
+        {% endfor %}
+    </ul>
+
+    <h4>📦 Sales by Product</h4>
+    <ul>
+        {% for product in product_sales %}
+            <li>{{ product.name }} - ₹{{ product.total }}</li>
+        {% endfor %}
+    </ul>
+
+    <a href="{{ url_for('home') }}" class="btn btn-secondary mt-4">Back to Home</a>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

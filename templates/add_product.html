@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Products</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body.add_product {
+            background-color: #f8f9fa;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        h2, h5 {
+            font-weight: 600;
+        }
+
+        form {
+            background-color: #fff;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+
+        label {
+            font-weight: 500;
+            color: #333;
+        }
+
+        input.form-control {
+            border-radius: 8px;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            border: none;
+            font-weight: 500;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .btn-outline-secondary {
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .alert {
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body class="add_product">
+    
+<div class="container mt-5">
+    <h2 class="text-center mb-4">➕ Add New Product</h2>
+
+    <form method="POST" class="shadow-sm p-4 bg-white rounded mx-auto" style="max-width: 700px;">
+        {{ form.hidden_tag() }}
+
+        <!-- Product Name -->
+        <div class="mb-3">
+            {{ form.name.label(class="form-label") }}
+            {{ form.name(class="form-control", placeholder="English Name") }}
+        </div>
+
+        <!-- Tamil Name -->
+        <div class="mb-3">
+            {{ form.tamil_name.label(class="form-label") }}
+            {{ form.tamil_name(class="form-select", placeholder="தமிழ் பெயர்") }}
+        </div>
+
+        <h5 class="mb-3">Product Variants (Unit + Price + Stock)</h5>
+
+        <div id="variants">
+            {% for subform in form.variants %}
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    {{ subform.unit.label(class="form-label") }}
+                    {{ subform.unit(class="form-control", placeholder="e.g. 1kg") }}
+                </div>
+                <div class="col-md-4">
+                    {{ subform.price.label(class="form-label") }}
+                    {{ subform.price(class="form-control", placeholder="e.g. 45.00") }}
+                </div>
+                <div class="col-md-4">
+                    {{ subform.stock.label(class="form-label") }}
+                    {{ subform.stock(class="form-control", placeholder="e.g. 100") }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="d-grid mt-4">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Product List</a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
