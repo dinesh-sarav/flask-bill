@@ -270,7 +270,7 @@ def upload_products():
                 db.session.add(product)
                 db.session.flush()
 
-            if not ProductVariant.query.filter_by(product_id=product.id, unit=unit).lower():
+            if not ProductVariant.query.filter_by(product_id=product.id, unit=unit).first():
                 variant = ProductVariant(product_id=product.id, unit=unit, price=price, stock=stock)
                 db.session.add(variant)
 
