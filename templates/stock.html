@@ -49,6 +49,11 @@
         Total items in stock: {{ products | map(attribute='total_stock') | sum }}
     </h6>
 
+    <form method="get" action="{{ url_for('stock') }}" class="mb-3">
+    <input type="text" name="search" class="form-control" placeholder="Search by Name, Tamil, or Romanized">
+    <button type="submit" class="btn btn-primary mt-2">Search</button>
+</form>
+
     {% with messages = get_flashed_messages() %}
     {% if messages %}
     <div class="alert alert-success alert-dismissible fade show" role="alert">

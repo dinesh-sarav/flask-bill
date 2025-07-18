@@ -12,7 +12,7 @@ class Product(db.Model):
     sold_by = db.Column(db.String(20))  
     price = db.Column(db.Float)
     tamil_name = db.Column(db.String(100))
-    
+    romanized_name = db.Column(db.String(100)) 
 
     @property
     def total_stock(self):

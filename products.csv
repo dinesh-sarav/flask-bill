@@ -1,59 +1,61 @@
-name,unit,price,stock
-,,,
-3 Roses,1 Packet,5,100
-3 Roses,1 Packet,10,100
-3 Roses,25g,25,20
-3 Roses,50g ,25,50
-3 Roses,100g,98,20
-3 Roses,250g,213,20
-,,,
-Chackra Gold,1 Packet,5,100
-Chackra Gold,1 Packet,10,100
-Chackra Gold,25g,25,20
-Chackra Gold,50g ,25,50
-Chackra Gold,100g,98,20
-Chackra Gold,250g,213,20
-,,,
-Bru,1 Packet,5,100
-Bru,1 Packet,10,100
-,,,
-Sunrice,1 Packet,2,100
-Sunrice,1 Packet,5,100
-Sunrice,1 Packet,10,100
-,,,
-Britaniya Marigold,1 Packet,5,100
-Britaniya Marigold,1 Packet,10,100
-Britaniya Marigold,1 Packet,25,100
-Britaniya Marigold,1 Packet,45,100
-,,,
-Britaniya  Gooday,1 Packet,5,100
-Britaniya  Gooday,1 Packet,10,100
-Britaniya  Gooday,1 Packet,25,100
-Britaniya  Gooday,1 Packet,45,100
-,,,
-Britaniya  JimJam,1 Packet,10,100
-Britaniya  Gooday Chocko,1 Packet,10,100
-,,,
-Britaniya Happy happy,1 Packet,5,50
-Britaniya Happy happy,1 Packet,10,50
-,,,
-Britaniya  JimJam,1 Packet,5,100
-Britaniya  JimJam,1 Packet,10,100
-,,,
-Sugar,500 g,25,48
-Sugar,250 g,13,60
-Sugar,1 kg,50,30
-,,,
-Toor dal Udhyam,100g,18,30
-Toor dal Udhyam,200g,38,30
-Toor dal Udhyam,500g,84,30
-Toor dal Udhyam,1kg,160,30
-,,,
-Toor dal,250g,35,30
-Toor dal,500g,70,30
-Toor dal,1kg,140,30
-,,,
-Comfort,1packet,4,10
-,,,
-Anil Semiya,1 packet,22,20
-Anil  Ragi Semiya,2 packet,25,20
+name,tamil_name,romanized_name,unit,price,stock
+Salt,?????,uppu,kg,30,100
+Sugar,????????,sarkkarai,kg,45,80
+Rice,?????,arisi,kg,60,150
+Toor Dal,?????? ???????,thuvaram paruppu,kg,120,60
+Green Gram,???? ???????,paasi paruppu,kg,90,70
+3 Roses,,,25g,25,20
+3 Roses,,,50g ,25,50
+3 Roses,,,100g,98,20
+3 Roses,,,250g,213,20
+,,,,,
+Chackra Gold,,,1 Packet,5,100
+Chackra Gold,,,1 Packet,10,100
+Chackra Gold,,,25g,25,20
+Chackra Gold,,,50g ,25,50
+Chackra Gold,,,100g,98,20
+Chackra Gold,,,250g,213,20
+,,,,,
+Bru,,,1 Packet,5,100
+Bru,,,1 Packet,10,100
+,,,,,
+Sunrice,,,1 Packet,2,100
+Sunrice,,,1 Packet,5,100
+Sunrice,,,1 Packet,10,100
+,,,,,
+Britaniya Marigold,,,1 Packet,5,100
+Britaniya Marigold,,,1 Packet,10,100
+Britaniya Marigold,,,1 Packet,25,100
+Britaniya Marigold,,,1 Packet,45,100
+,,,,,
+Britaniya  Gooday,,,1 Packet,5,100
+Britaniya  Gooday,,,1 Packet,10,100
+Britaniya  Gooday,,,1 Packet,25,100
+Britaniya  Gooday,,,1 Packet,45,100
+,,,,,
+Britaniya  JimJam,,,1 Packet,10,100
+Britaniya  Gooday Chocko,,,1 Packet,10,100
+,,,,,
+Britaniya Happy happy,,,1 Packet,5,50
+Britaniya Happy happy,,,1 Packet,10,50
+,,,,,
+Britaniya  JimJam,,,1 Packet,5,100
+Britaniya  JimJam,,,1 Packet,10,100
+,,,,,
+Sugar,,,500 g,25,48
+Sugar,,,250 g,13,60
+Sugar,,,1 kg,50,30
+,,,,,
+Toor dal Udhyam,,,100g,18,30
+Toor dal Udhyam,,,200g,38,30
+Toor dal Udhyam,,,500g,84,30
+Toor dal Udhyam,,,1kg,160,30
+,,,,,
+Toor dal,,,250g,35,30
+Toor dal,,,500g,70,30
+Toor dal,,,1kg,140,30
+,,,,,
+Comfort,,,1packet,4,10
+,,,,,
+Anil Semiya,,,1 packet,22,20
+Anil  Ragi Semiya,,,2 packet,25,20

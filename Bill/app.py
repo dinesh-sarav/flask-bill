@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from forms import ProductForm, CustomerForm
 from models import Product, ProductVariant, Customer, Invoice, InvoiceItem, User
 from extensions import db
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date, timedelta
 from xhtml2pdf import pisa
@@ -10,10 +10,12 @@ from datetime import datetime
 from io import TextIOWrapper, BytesIO, StringIO
 import csv
 from indic_transliteration.sanscript import transliterate, SCHEMES
+from indic_transliteration import sanscript
 from flask_login import current_user, login_required
 from functools import wraps
 from flask_login import LoginManager
 from flask_login import login_user, logout_user
+from flask import jsonify
 
 app = Flask(__name__, template_folder='../templates')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -66,39 +68,104 @@ def logout():
 @login_required
 @admin_required
 def home():
+    invoices = Invoice.query.order_by(Invoice.date.desc()).all()  
     products = Product.query.all()
     cart = session.get('cart', {})
     cart_items, total = get_cart_items(cart)
     low_stock_variants = ProductVariant.query.filter(ProductVariant.stock <= 5).all()
     last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
-    return render_template('home.html', products=products, cart_items=cart_items, total=total,
-                           low_stock_variants=low_stock_variants, last_invoice=last_invoice)
+
+    if last_invoice and isinstance(last_invoice.date, str):
+        try:
+            last_invoice.date = datetime.fromisoformat(last_invoice.date)
+        except ValueError:
+            last_invoice.date = None
+
+    return render_template(
+        'home.html',
+        products=products,
+        cart_items=cart_items,
+        total=total,
+        low_stock_variants=low_stock_variants,
+        last_invoice=last_invoice
+    )
 
 @app.route('/search_product')
 def search_product():
-    query = request.args.get('q', '').lower()
-    results = []
+    query = request.args.get('q', '').strip().lower()
+    starts_with_results = []
+    contains_results = []
 
     if query:
         products = Product.query.all()
         for product in products:
             english_name = product.name.lower()
             tamil_name = (product.tamil_name or '').lower()
+            romanized_name = (product.romanized_name or '').lower()
 
-            if query in english_name or query in tamil_name:
-                results.append(product)
+            # Combined search space
+            combined = f"{english_name} {tamil_name} {romanized_name}"
+
+            if (
+                english_name.startswith(query)
+                or tamil_name.startswith(query)
+                or romanized_name.startswith(query)
+            ):
+                starts_with_results.append(product)
+            elif query in combined:
+                contains_results.append(product)
 
     cart = session.get('cart', {})
     cart_items, total = get_cart_items(cart)
-    return render_template('search.html', query=query, products=results, cart_items=cart_items, total=total)
+
+    return render_template(
+        'search.html',
+        query=query,
+        starts_with_results=starts_with_results,
+        contains_results=contains_results,
+        cart_items=cart_items,
+        total=total
+    )
+
+@app.route('/suggest_products')
+def suggest_products():
+    query = request.args.get('query', '').strip().lower()
+
+    if not query:
+        return jsonify([])
+
+    matches = Product.query.filter(
+        or_(
+            func.lower(Product.name).contains(query),
+            func.lower(Product.tamil_name).contains(query),
+            func.lower(Product.romanized_name).contains(query)
+        )
+    ).all()
+
+    suggestions = [{"id": p.id, "name": p.name} for p in matches]
+    return jsonify(suggestions)
 
 # ---------------- Product --------------------
 @app.route('/stock')
+@login_required
+@admin_required
 def stock():
-    products = Product.query.options(joinedload(Product.variants)).all()
-    return render_template('stock.html', products=products)
+    query = request.args.get('search', '').strip().lower()
+
+    if query:
+        products = Product.query.filter(
+            (Product.name.ilike(f'%{query}%')) |
+            (Product.tamil_name.ilike(f'%{query}%')) |
+            (Product.romanized_name.ilike(f'%{query}%'))
+        ).all()
+    else:
+        products = Product.query.all()
+
+    return render_template('stock.html', products=products, search_query=query)
 
 # ---------------- Add Product ----------------
+@login_required
+@admin_required
 @app.route('/add_products', methods=['GET', 'POST'])
 def add_product():
     form = ProductForm()
@@ -122,6 +189,8 @@ def add_product():
     return render_template('add_product.html', form=form)
 
 # ---------------- Edit Product ----------------
+@login_required
+@admin_required
 @app.route('/edit_product/<int:product_id>', methods=['GET', 'POST'])
 def edit_product(product_id):
     product = db.session.get(Product, product_id)
@@ -159,6 +228,8 @@ def edit_product(product_id):
     return render_template('edit.html', form=form)
 
 # ---------------- Delete Product ----------------
+@login_required
+@admin_required
 @app.route('/delete_product/<int:product_id>')
 def delete_product(product_id):
     product = db.session.get(Product, product_id)
@@ -170,6 +241,8 @@ def delete_product(product_id):
     return redirect(url_for('home'))
 
 # ---------------- Upload Products CSV ----------------
+@login_required
+@admin_required
 @app.route('/upload-products', methods=['GET', 'POST'])
 def upload_products():
     if request.method == 'POST':
@@ -178,11 +251,13 @@ def upload_products():
             flash("Only CSV files allowed", "danger")
             return redirect(url_for('upload_products'))
 
-        reader = csv.DictReader(TextIOWrapper(file.stream))
+        reader = csv.DictReader(TextIOWrapper(file.stream,  encoding='utf-8'))
         for row in reader:
             name = row['name'].strip()
             tamil_name = row.get('tamil_name', '').strip()
+            romanized_name = row.get('romanized_name', '').strip()
             unit = row['unit'].strip()
+
             try:
                 price = float(row['price'])
                 stock = float(row.get('stock', 0))
@@ -191,11 +266,11 @@ def upload_products():
 
             product = Product.query.filter_by(name=name).first()
             if not product:
-                product = Product(name=name, tamil_name=tamil_name)
+                product = Product(name=name, tamil_name=tamil_name, romanized_name=romanized_name)
                 db.session.add(product)
                 db.session.flush()
 
-            if not ProductVariant.query.filter_by(product_id=product.id, unit=unit).first():
+            if not ProductVariant.query.filter_by(product_id=product.id, unit=unit).lower():
                 variant = ProductVariant(product_id=product.id, unit=unit, price=price, stock=stock)
                 db.session.add(variant)
 
@@ -396,11 +471,35 @@ def checkout_by_mobile():
 
 # ---------------- Invoice----------------
 @app.route('/invoices')
+@login_required
+@admin_required
 def all_invoices():
-    invoices = Invoice.query.order_by(Invoice.date.desc()).all()
-    return render_template('invoices.html', invoices=invoices)
+    search_query = request.args.get('search', '').strip()
+
+    query = Invoice.query.join(Invoice.customer).options(joinedload(Invoice.customer))
+
+    if search_query:
+        query = query.filter(
+            or_(
+                Invoice.bill_no.ilike(f"%{search_query}%"),
+                Customer.name.ilike(f"%{search_query}%"),
+                Customer.phone.ilike(f"%{search_query}%")
+            )
+        )
+
+    invoices = query.order_by(Invoice.date.desc()).all()
+
+    for invoice in invoices:
+        if isinstance(invoice.date, datetime):
+            invoice.date_str = invoice.date.strftime('%d-%m-%Y %H:%M')
+        else:
+            invoice.date_str = invoice.date
+
+    return render_template('invoice_list.html', invoices=invoices, search_query=search_query)
 
 @app.route('/invoice/<int:invoice_id>')
+@login_required
+@admin_required
 def generate_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     items = invoice.items 
@@ -444,6 +543,8 @@ def generate_invoice(invoice_id):
     return response
 
 @app.route('/delete_invoice/<int:invoice_id>')
+@login_required
+@admin_required
 def delete_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     
@@ -461,6 +562,8 @@ def delete_invoice(invoice_id):
 
 # ---------------- Sales Report ----------------
 @app.route('/sales_report')
+@login_required
+@admin_required
 def sales_report():
     start = request.args.get('start')
     end = request.args.get('end')
@@ -490,6 +593,8 @@ def sales_report():
 
 # ---------------- Download CSV/PDF ----------------
 @app.route('/download_sales_csv')
+@login_required
+@admin_required
 def download_sales_csv():
     invoices = Invoice.query.order_by(Invoice.date.desc()).all()
     output = StringIO()
@@ -503,6 +608,8 @@ def download_sales_csv():
     return response
 
 @app.route('/download_sales_pdf')
+@login_required
+@admin_required
 def download_sales_pdf():
     invoices = Invoice.query.order_by(Invoice.date.desc()).all()
     html = render_template('sales_report_pdf.html', invoices=invoices)
@@ -538,6 +645,8 @@ def format_date(value, format='%d-%m-%Y %H:%M'):
     return value
 # ---------------- Customers ----------------
 @app.route('/add_customer', methods=['GET', 'POST'])
+@login_required
+@admin_required
 def add_customer():
     form = CustomerForm()
     if form.validate_on_submit():
@@ -549,11 +658,15 @@ def add_customer():
     return render_template('add_customer.html', form=form)
 
 @app.route('/customers')
+@login_required
+@admin_required
 def customers():
     customers = Customer.query.order_by(Customer.id.desc()).all()
     return render_template('customers.html', customers=customers)
 
 @app.route('/search_customer')
+@login_required
+@admin_required
 def search_customer():
     query = request.args.get('q', '').strip()
     if not query:
