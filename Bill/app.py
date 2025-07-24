@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, make_response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, make_response, jsonify
 from forms import ProductForm, CustomerForm
 from models import Product, ProductVariant, Customer, Invoice, InvoiceItem, User
 from extensions import db
@@ -6,31 +6,41 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date, timedelta
 from xhtml2pdf import pisa
-from datetime import datetime
-from io import TextIOWrapper, BytesIO, StringIO
-import csv
-from indic_transliteration.sanscript import transliterate, SCHEMES
-from indic_transliteration import sanscript
-from flask_login import current_user, login_required
+from flask_login import current_user, login_required, LoginManager, login_user, logout_user
 from functools import wraps
-from flask_login import LoginManager
-from flask_login import login_user, logout_user
-from flask import jsonify
+from io import BytesIO, StringIO
+import csv,io
+from flask_wtf import FlaskForm
+from flask_mail import Mail 
+from flask_mail import Message
+from flask_migrate import Migrate
+import uuid
+
+class EmptyForm(FlaskForm):
+    pass
 
 app = Flask(__name__, template_folder='../templates')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SECRET_KEY'] = 'secret'
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your_email@gmail.com'         # Change this
+app.config['MAIL_PASSWORD'] = 'your_email_password_or_app'   # Use Gmail App Password if 2FA is enabled
+app.config['MAIL_DEFAULT_SENDER'] = 'your_email@gmail.com'
+
+db.init_app(app)
+mail = Mail(app)
+migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'  
+login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-db.init_app(app)
 
 # ---------------- Admin Guard ----------------
 def admin_required(f):
@@ -41,21 +51,29 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-from flask_login import login_user, logout_user
+@app.route('/admin/dashboard')
+@login_required
+@admin_required
+def admin_dashboard():
+    return render_template("admin_dashboard.html")  # or return your actual dashboard
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        email = request.form['email']
         password = request.form['password']
+        user = User.query.filter_by(email=email).first()
 
-        user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
+            if not user.email_verified:
+                flash("Please verify your email before logging in.", "warning")
+                return redirect(url_for('login'))
             login_user(user)
-            flash('Logged in successfully.', 'success')
-            return redirect(url_for('home'))
-        flash('Invalid credentials', 'danger')
-    return render_template('login.html') 
+            flash("Logged in successfully.", "success")
+            return redirect(url_for('admin_dashboard') if user.is_admin else url_for('home'))
+
+        flash("Invalid email or password.", "danger")
+    return render_template('login.html')
 
 @app.route('/logout')
 @login_required
@@ -63,105 +81,265 @@ def logout():
     logout_user()
     flash("Logged out.", "info")
     return redirect(url_for('login'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+
+        if User.query.filter_by(email=email).first():
+            flash("Email already exists", "danger")
+            return redirect(url_for('register'))
+
+        user = User(username=username, email=email)
+        user.set_password(password)
+        user.verification_token = str(uuid.uuid4())
+        db.session.add(user)
+        db.session.commit()
+
+        # Send verification email
+        verify_url = url_for('verify_email', token=user.verification_token, _external=True)
+        msg = Message("Verify Your Email", recipients=[email])
+        msg.body = f"Hi {username}, click this link to verify your email: {verify_url}"
+        mail.send(msg)
+
+        flash("Registered successfully. Please check your email to verify your account.", "info")
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
+
+@app.route('/verify/<token>')
+def verify_email(token):
+    user = User.query.filter_by(verification_token=token).first()
+    if not user:
+        flash("Invalid or expired verification link", "danger")
+        return redirect(url_for('login'))
+
+    user.email_verified = True
+    user.verification_token = None
+    db.session.commit()
+    flash("Email verified successfully. You can now log in.", "success")
+    return redirect(url_for('login'))
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email']
+        user = User.query.filter_by(email=email).first()
+        if user:
+            token = str(uuid.uuid4())
+            user.reset_token = token
+            db.session.commit()
+
+            reset_link = url_for('reset_password', token=token, _external=True)
+            from flask_mail import Message
+            msg = Message("Password Reset Link", recipients=[email])
+            msg.body = f"Click this link to reset your password: {reset_link}"
+            mail.send(msg)
+
+            flash("A password reset link has been sent to your email.", "info")
+            return redirect(url_for('login'))
+        flash("Email not found.", "danger")
+    return render_template('forgot_password.html')
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    user = User.query.filter_by(reset_token=token).first()
+    if not user:
+        flash("Invalid or expired token", "danger")
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        new_password = request.form['password']
+        user.set_password(new_password)
+        user.reset_token = None
+        db.session.commit()
+        flash("Password reset successfully. Please login.", "success")
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html')
+
 # ---------------- Home ----------------
 @app.route('/')
 @login_required
 @admin_required
 def home():
-    invoices = Invoice.query.order_by(Invoice.date.desc()).all()  
+    active_carts = [] 
+    current_cart_id = session.get('current_cart_id') 
+
     products = Product.query.all()
     cart = session.get('cart', {})
     cart_items, total = get_cart_items(cart)
     low_stock_variants = ProductVariant.query.filter(ProductVariant.stock <= 5).all()
     last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
 
+    # --- Date conversion for invoices (ensure consistency) ---
+    # This block can be removed if invoice.date is always stored as datetime objects.
+    # It's better to store dates consistently as datetime in the database.
+    # For now, leaving it if your DB has mixed types.
     if last_invoice and isinstance(last_invoice.date, str):
         try:
-            last_invoice.date = datetime.fromisoformat(last_invoice.date)
+            last_invoice.date_obj = datetime.fromisoformat(last_invoice.date) # Use a different attribute if needed
         except ValueError:
-            last_invoice.date = None
+            last_invoice.date_obj = None
+    elif last_invoice:
+        last_invoice.date_obj = last_invoice.date # Already a datetime object
+    else:
+        last_invoice_date_obj = None
+
+
+    # Calculate daily, weekly, monthly totals for the dashboard
+    today = date.today()
+    # Assuming your Invoice.date column is stored as datetime objects or convertible
+    daily_total = db.session.query(func.sum(Invoice.total)).filter(
+        func.date(Invoice.date) == today
+    ).scalar() or 0
+
+    week_start = today - timedelta(days=today.weekday())
+    weekly_total = db.session.query(func.sum(Invoice.total)).filter(
+        func.date(Invoice.date) >= week_start
+    ).scalar() or 0
+
+    month_start = today.replace(day=1)
+    monthly_total = db.session.query(func.sum(Invoice.total)).filter(
+        func.date(Invoice.date) >= month_start
+    ).scalar() or 0
 
     return render_template(
         'home.html',
+        active_carts=active_carts, # Still an empty list, or populated if you add persistent cart logic
+        current_cart_id=current_cart_id, # Still from session, or populated if you add persistent cart logic
         products=products,
         cart_items=cart_items,
         total=total,
         low_stock_variants=low_stock_variants,
-        last_invoice=last_invoice
+        last_invoice=last_invoice,
+        daily_total=daily_total,
+        weekly_total=weekly_total,
+        monthly_total=monthly_total
     )
 
 @app.route('/search_product')
 def search_product():
     query = request.args.get('q', '').strip().lower()
-    starts_with_results = []
-    contains_results = []
+    products_found = []
 
+    all_products_with_variants = Product.query.options(db.joinedload(Product.variants)).all()
     if query:
-        products = Product.query.all()
-        for product in products:
-            english_name = product.name.lower()
-            tamil_name = (product.tamil_name or '').lower()
-            romanized_name = (product.romanized_name or '').lower()
+        barcode_variant = ProductVariant.query.filter(ProductVariant.barcode == query).first()
+        if barcode_variant:
+            products_found.append(barcode_variant.product)
 
-            # Combined search space
-            combined = f"{english_name} {tamil_name} {romanized_name}"
+        for product in all_products_with_variants:
+            if product not in products_found: # Avoid duplicates
+                name = (product.name or '').lower()
+                tamil = (product.tamil_name or '').lower()
+                roman = (product.romanized_name or '').lower()
 
-            if (
-                english_name.startswith(query)
-                or tamil_name.startswith(query)
-                or romanized_name.startswith(query)
-            ):
-                starts_with_results.append(product)
-            elif query in combined:
-                contains_results.append(product)
+                if query in name or query in tamil or query in roman:
+                    products_found.append(product)
 
     cart = session.get('cart', {})
     cart_items, total = get_cart_items(cart)
 
     return render_template(
-        'search.html',
-        query=query,
-        starts_with_results=starts_with_results,
-        contains_results=contains_results,
+        'home.html', # Redirect search results back to home, so it can display them alongside the dashboard
+        products=products_found, # Pass the search results here
+        query=query, # Pass the query back for display in the search bar
         cart_items=cart_items,
-        total=total
+        total=total,
+        # Also pass other home route variables if home.html expects them
+        active_carts=[],
+        current_cart_id=None,
+        low_stock_variants=ProductVariant.query.filter(ProductVariant.stock <= 5).all(),
+        last_invoice=Invoice.query.order_by(Invoice.id.desc()).first(),
+        daily_total=db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) == date.today()).scalar() or 0,
+        weekly_total=db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= date.today() - timedelta(days=date.today().weekday())).scalar() or 0,
+        monthly_total=db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= date.today().replace(day=1)).scalar() or 0
     )
-
-@app.route('/suggest_products')
-def suggest_products():
-    query = request.args.get('query', '').strip().lower()
-
-    if not query:
-        return jsonify([])
-
-    matches = Product.query.filter(
-        or_(
-            func.lower(Product.name).contains(query),
-            func.lower(Product.tamil_name).contains(query),
-            func.lower(Product.romanized_name).contains(query)
-        )
-    ).all()
-
-    suggestions = [{"id": p.id, "name": p.name} for p in matches]
-    return jsonify(suggestions)
 
 # ---------------- Product --------------------
 @app.route('/stock')
 @login_required
-@admin_required
 def stock():
-    query = request.args.get('search', '').strip().lower()
+    search_query = request.args.get('search', '').strip()
+    filter_type = request.args.get('filter', 'all')
 
-    if query:
-        products = Product.query.filter(
-            (Product.name.ilike(f'%{query}%')) |
-            (Product.tamil_name.ilike(f'%{query}%')) |
-            (Product.romanized_name.ilike(f'%{query}%'))
-        ).all()
+    products = Product.query.all()
+
+    # Filter products based on search
+    if search_query:
+        products = [
+            p for p in products if
+            search_query.lower() in (p.name or '').lower() or
+            search_query.lower() in (p.tamil_name or '').lower() or
+            search_query.lower() in (p.romanized_name or '').lower()
+        ]
+
+    # Flatten all variants
+    all_variants = [
+        variant for product in products for variant in product.variants
+    ]
+
+    LOW_STOCK_THRESHOLD = 10
+
+    if filter_type == 'low':
+        # Filter variants with stock less than threshold
+        filtered_variants = [v for v in all_variants if v.stock < LOW_STOCK_THRESHOLD]
+    elif filter_type == 'high':
+        filtered_variants = [v for v in all_variants if v.stock >= LOW_STOCK_THRESHOLD]
     else:
-        products = Product.query.all()
+        filtered_variants = all_variants
 
-    return render_template('stock.html', products=products, search_query=query)
+    # Re-group filtered variants by product
+    product_dict = {}
+    for variant in filtered_variants:
+        if variant.product_id not in product_dict:
+            product_dict[variant.product_id] = {
+                'product': variant.product,
+                'variants': []
+            }
+        product_dict[variant.product_id]['variants'].append(variant)
+
+    grouped_products = [
+        {
+            'product': data['product'],
+            'variants': data['variants'],
+            'current_stock': sum(v.stock for v in data['variants']),
+            'max_stock': sum(v.initial_stock or 0 for v in data['variants'])
+        }
+        for data in product_dict.values()
+    ]
+
+    total_stock = sum(p['current_stock'] for p in grouped_products)
+
+    return render_template(
+        'stock.html',
+        products=grouped_products,
+        total_stock=total_stock,
+        search_query=search_query,
+        filter_type=filter_type
+    )
+
+@app.route('/scan_barcode', methods=['POST'])
+@login_required # Ensure user is logged in
+def scan_barcode():
+    barcode = request.form.get('barcode')
+    variant = ProductVariant.query.filter_by(barcode=barcode).first()
+
+    if variant:
+        # Add to cart directly
+        cart = session.get('cart', {})
+        cart[str(variant.id)] = cart.get(str(variant.id), 0) + 1
+        session['cart'] = cart
+        session.modified = True
+        flash(f"Product '{variant.product.name}' ({variant.unit}) added from barcode.", "success")
+        return redirect(url_for('home')) # Redirect to home to show updated cart
+    else:
+        flash("No product found for scanned barcode.", "danger")
+        return redirect(url_for('home'))
 
 # ---------------- Add Product ----------------
 @login_required
@@ -170,9 +348,10 @@ def stock():
 def add_product():
     form = ProductForm()
     if form.validate_on_submit():
-        product = Product(name=form.name.data.strip(), tamil_name=form.tamil_name.data.strip())
+        product = Product(name=form.name.data.strip(), tamil_name=form.tamil_name.data.strip(),
+                          romanized_name=form.romanized_name.data.strip(), sold_by=form.sold_by.data.strip())
         db.session.add(product)
-        db.session.commit()
+        db.session.flush() # Ensure product.id is available for variants
 
         for variant_form in form.variants:
             if variant_form.unit.data and variant_form.price.data:
@@ -180,7 +359,8 @@ def add_product():
                     product_id=product.id,
                     unit=variant_form.unit.data.strip(),
                     price=variant_form.price.data,
-                    stock=variant_form.stock.data
+                    stock=variant_form.stock.data,
+                    barcode=variant_form.barcode.data.strip() if variant_form.barcode.data else None
                 )
                 db.session.add(variant)
         db.session.commit()
@@ -199,89 +379,159 @@ def edit_product(product_id):
 
     form = ProductForm(obj=product)
     if request.method == 'GET':
-        form.variants.entries.clear()
+        form.variants.entries.clear() # Clear existing entries from FlaskForm to populate with DB data
         for variant in product.variants:
             form.variants.append_entry({
                 'unit': variant.unit,
                 'price': variant.price,
-                'stock': variant.stock
+                'stock': variant.stock,
+                'barcode': variant.barcode # Include barcode here
             })
 
     if form.validate_on_submit():
-        product.name = form.name.data
-        product.tamil_name = form.tamil_name.data
-        db.session.commit()
+        product.name = form.name.data.strip()
+        product.tamil_name = form.tamil_name.data.strip()
+        product.romanized_name = form.romanized_name.data.strip()
+        product.sold_by = form.sold_by.data.strip()
+        # product.barcode = form.barcode.data.strip() # Product-level barcode is less common if variants have them.
+                                                   # If product has a barcode, ensure form includes it and handle updates.
 
+        # Delete existing variants and re-add them
         ProductVariant.query.filter_by(product_id=product.id).delete()
         for variant_form in form.variants:
-            variant = ProductVariant(
-                product_id=product.id,
-                unit=variant_form.unit.data,
-                price=variant_form.price.data,
-                stock=variant_form.stock.data
-            )
-            db.session.add(variant)
+            if variant_form.unit.data and variant_form.price.data: # Only add if essential fields are present
+                variant = ProductVariant(
+                    product_id=product.id,
+                    unit=variant_form.unit.data.strip(),
+                    price=variant_form.price.data,
+                    stock=variant_form.stock.data,
+                    barcode=variant_form.barcode.data.strip() if variant_form.barcode.data else None
+                )
+                db.session.add(variant)
         db.session.commit()
         flash("Product updated", "success")
-        return redirect(url_for('home'))
+        return redirect(url_for('stock')) # Redirect to stock page after edit
 
-    return render_template('edit.html', form=form)
+    return render_template('edit_product.html', form=form, product=product) # Use 'edit_product.html' for clarity
 
 # ---------------- Delete Product ----------------
 @login_required
 @admin_required
-@app.route('/delete_product/<int:product_id>')
-def delete_product(product_id):
-    product = db.session.get(Product, product_id)
-    if not product:
-        abort(404)
-    db.session.delete(product)
+@app.route('/delete_product', methods=['POST'])
+def delete_product():
+    selected_ids = request.form.get('selected_ids', '')
+    ids = [int(pid) for pid in selected_ids.split(',') if pid]
+
+    if not ids:
+        flash("No products selected for deletion.", "warning")
+        return redirect(url_for('stock'))
+
+    for pid in ids:
+        product = Product.query.get(pid)
+        if product:
+            # Delete associated variants first
+            ProductVariant.query.filter_by(product_id=product.id).delete()
+            db.session.delete(product)
+
     db.session.commit()
-    flash("Product deleted", "info")
-    return redirect(url_for('home'))
+    flash(f"{len(ids)} product(s) deleted successfully!", "success")
+    return redirect(url_for('stock'))
 
 # ---------------- Upload Products CSV ----------------
 @login_required
 @admin_required
-@app.route('/upload-products', methods=['GET', 'POST'])
+@app.route('/upload_products', methods=['GET', 'POST'])
 def upload_products():
     if request.method == 'POST':
-        file = request.files['file']
-        if not file.filename.endswith('.csv'):
-            flash("Only CSV files allowed", "danger")
+        file = request.files.get('file')
+        if not file or not file.filename.endswith('.csv'):
+            flash("Please upload a valid CSV file.", "danger")
             return redirect(url_for('upload_products'))
 
-        reader = csv.DictReader(TextIOWrapper(file.stream,  encoding='utf-8'))
-        for row in reader:
-            name = row['name'].strip()
-            tamil_name = row.get('tamil_name', '').strip()
-            romanized_name = row.get('romanized_name', '').strip()
-            unit = row['unit'].strip()
+        try:
+            stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
+            reader = csv.DictReader(stream)
 
-            try:
-                price = float(row['price'])
-                stock = float(row.get('stock', 0))
-            except ValueError:
-                continue
+            # Expected columns: name, tamil_name (optional), romanized_name (optional), sold_by (optional), unit, price, stock (optional), barcode (optional)
+            required_headers = ['name', 'unit', 'price']
+            if not all(header in reader.fieldnames for header in required_headers):
+                flash(f"CSV must contain 'name', 'unit', and 'price' columns. Found: {', '.join(reader.fieldnames)}", "danger")
+                return redirect(url_for('upload_products'))
 
-            product = Product.query.filter_by(name=name).first()
-            if not product:
-                product = Product(name=name, tamil_name=tamil_name, romanized_name=romanized_name)
-                db.session.add(product)
-                db.session.flush()
+            count = 0
+            for i, row in enumerate(reader):
+                name = row['name'].strip()
+                unit = row['unit'].strip()
+                
+                if not name or not unit:
+                    flash(f"Skipping row {i+1}: 'name' or 'unit' cannot be empty.", "warning")
+                    continue
 
-            if not ProductVariant.query.filter_by(product_id=product.id, unit=unit).first():
-                variant = ProductVariant(product_id=product.id, unit=unit, price=price, stock=stock)
-                db.session.add(variant)
+                try:
+                    price = float(row['price']) if row.get('price') else 0.0
+                    stock = float(row.get('stock')) if row.get('stock') else 0.0
+                except ValueError:
+                    flash(f"Skipping row {i+1}: invalid price or stock. Ensure numeric values.", "warning")
+                    continue
 
-        db.session.commit()
-        flash("CSV uploaded successfully", "success")
-        return redirect(url_for('home'))
+                tamil_name = row.get('tamil_name', '').strip()
+                romanized_name = row.get('romanized_name', '').strip()
+                sold_by = row.get('sold_by', '').strip()
+                barcode_raw = row.get('barcode', '').strip()
+                barcode = str(barcode_raw) if barcode_raw else None # Store barcode as string, None if empty
+
+                # Create or fetch product
+                product = Product.query.filter_by(name=name).first()
+                if not product:
+                    product = Product(
+                        name=name,
+                        tamil_name=tamil_name,
+                        romanized_name=romanized_name,
+                        sold_by=sold_by
+                        # No product-level barcode here unless your schema supports it distinctly
+                    )
+                    db.session.add(product)
+                    db.session.flush()  # Ensure product.id is available
+
+                # Create or update variant
+                existing_variant = ProductVariant.query.filter_by(
+                    product_id=product.id, unit=unit
+                ).first()
+
+                if existing_variant:
+                    # Update existing variant (e.g., price, stock, barcode)
+                    existing_variant.price = price
+                    existing_variant.stock = stock
+                    existing_variant.barcode = barcode
+                else:
+                    # Create new variant
+                    variant = ProductVariant(
+                        product_id=product.id,
+                        unit=unit,
+                        price=price,
+                        stock=stock,
+                        barcode=barcode
+                    )
+                    db.session.add(variant)
+
+                count += 1
+                if count % 50 == 0: # Commit in batches
+                    db.session.commit()
+
+            db.session.commit() # Final commit for any remaining items
+            flash(f"Successfully uploaded {count} product variants from CSV.", "success")
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error during upload: {str(e)}. Please check your CSV format.", "danger")
+
+        return redirect(url_for('home')) # Redirect to home or stock page
 
     return render_template('upload_products.html')
 
 # ---------------- Cart ----------------
 @app.route('/add_to_cart_with_quantity', methods=['POST'])
+@login_required # Ensure user is logged in
 def add_to_cart_with_quantity():
     variant_id = request.form.get('variant_id')
     quantity = request.form.get('quantity', 1)
@@ -298,23 +548,20 @@ def add_to_cart_with_quantity():
         flash("Invalid quantity entered.", "danger")
         return redirect(url_for('home'))
 
-    # Ensure the variant exists
     variant = ProductVariant.query.get(variant_id)
     if not variant:
         flash("Product variant not found.", "danger")
         return redirect(url_for('home'))
 
-    # Optional: Check stock availability before adding
-    if variant.stock is not None:
-        cart = session.get('cart', {})
-        current_qty = cart.get(str(variant_id), 0)
-        if current_qty + quantity > variant.stock:
-            flash(f"Only {variant.stock - current_qty} left in stock.", "warning")
-            return redirect(request.referrer or url_for('home'))
-
-    # Add to cart
     cart = session.get('cart', {})
-    cart[str(variant_id)] = cart.get(str(variant_id), 0) + quantity
+    current_qty_in_cart = cart.get(str(variant_id), 0)
+
+    # Check stock availability
+    if variant.stock is not None and (current_qty_in_cart + quantity) > variant.stock:
+        flash(f"Only {variant.stock - current_qty_in_cart} of {variant.product.name} ({variant.unit}) left in stock.", "warning")
+        return redirect(request.referrer or url_for('home'))
+
+    cart[str(variant_id)] = current_qty_in_cart + quantity
     session['cart'] = cart
     session.modified = True
 
@@ -322,29 +569,57 @@ def add_to_cart_with_quantity():
     return redirect(request.referrer or url_for('home'))
 
 @app.route('/add_to_cart/<int:variant_id>')
+@login_required # Ensure user is logged in
 def add_to_cart(variant_id):
+    variant = ProductVariant.query.get(variant_id)
+    if not variant:
+        flash("Product variant not found.", "danger")
+        return redirect(request.referrer or url_for('home'))
+
     cart = session.get('cart', {})
-    cart[str(variant_id)] = cart.get(str(variant_id), 0) + 1
+    current_qty_in_cart = cart.get(str(variant_id), 0)
+
+    # Check stock availability (for single addition)
+    if variant.stock is not None and (current_qty_in_cart + 1) > variant.stock:
+        flash(f"Only {variant.stock - current_qty_in_cart} of {variant.product.name} ({variant.unit}) left in stock.", "warning")
+        return redirect(request.referrer or url_for('home'))
+
+    cart[str(variant_id)] = current_qty_in_cart + 1
     session['cart'] = cart
     session.modified = True
     flash("Item added to cart", "success")
     return redirect(request.referrer or url_for('home'))
 
 @app.route('/view_cart')
+@login_required
 def view_cart():
     cart = session.get('cart', {})
     cart_items, total = get_cart_items(cart)
     customers = Customer.query.all()
-    return render_template('cart.html', cart_items=cart_items, total=total, customers=customers)
+    form = EmptyForm()
+    return render_template('cart.html', form=form, cart_items=cart_items, total=total, customers=customers)
 
 @app.route('/increase_quantity/<int:variant_id>')
+@login_required
 def increase_quantity(variant_id):
     cart = session.get('cart', {})
-    cart[str(variant_id)] = cart.get(str(variant_id), 0) + 1
+    current_qty = cart.get(str(variant_id), 0)
+
+    variant = ProductVariant.query.get(variant_id)
+    if not variant:
+        flash("Product variant not found.", "danger")
+        return redirect(url_for('view_cart')) # Or home
+
+    if variant.stock is not None and current_qty + 1 > variant.stock:
+        flash(f"Cannot add more. Only {variant.stock - current_qty} left in stock for {variant.product.name}.", "warning")
+        return redirect(url_for('view_cart'))
+
+    cart[str(variant_id)] = current_qty + 1
     session.modified = True
     return redirect(url_for('view_cart'))
 
 @app.route('/decrease_quantity/<int:variant_id>')
+@login_required
 def decrease_quantity(variant_id):
     cart = session.get('cart', {})
     if cart.get(str(variant_id), 0) > 1:
@@ -355,24 +630,34 @@ def decrease_quantity(variant_id):
     return redirect(url_for('view_cart'))
 
 @app.route('/remove_from_cart/<int:variant_id>')
+@login_required
 def remove_from_cart(variant_id):
     session['cart'].pop(str(variant_id), None)
     session.modified = True
+    flash("Item removed from cart.", "info")
     return redirect(url_for('view_cart'))
 
 @app.route('/clear_cart')
+@login_required
 def clear_cart():
     session['cart'] = {}
     session.modified = True
+    flash("Cart cleared.", "info")
     return redirect(url_for('view_cart'))
 
 # ---------------- Checkout ----------------
 @app.route('/checkout_customer', methods=['POST'])
+@login_required
 def checkout_customer():
     customer_id = request.form.get('customer_id')
+    # Validate customer_id if necessary
+    if not customer_id:
+        flash("Please select a customer or use the mobile checkout option.", "danger")
+        return redirect(url_for('view_cart'))
     return redirect(url_for('checkout', customer_id=customer_id))
 
-@app.route('/checkout/<int:customer_id>')
+'''@app.route('/checkout/<int:customer_id>')
+@login_required
 def checkout(customer_id):
     cart = session.get('cart', {})
     if not cart:
@@ -380,94 +665,267 @@ def checkout(customer_id):
         return redirect(url_for('view_cart'))
 
     customer = Customer.query.get_or_404(customer_id)
-    total = 0
 
     last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
-    new_bill_no = f"BILL-{(int(last_invoice.bill_no.split('-')[-1]) + 1) if last_invoice else 1:03d}"
+    bill_no = f"BILL-{(int(last_invoice.bill_no.split('-')[-1]) + 1) if last_invoice else 1:03d}"
 
-    invoice = Invoice(customer_id=customer.id, total=0, bill_no=new_bill_no)
-    db.session.add(invoice)
-    db.session.commit()
+    invoice = Invoice(
+        customer_id=customer.id,
+        bill_no=bill_no,
+        date=datetime.now(),
+        total=0,
+        total_items=0,
+        total_qty=0
+    )
 
+    total_items = 0
+    total_qty = 0
+    total = 0
+    
     for variant_id, qty in cart.items():
+        qty = int(qty)
         variant = ProductVariant.query.get(int(variant_id))
         if variant and variant.stock >= qty:
-            subtotal = variant.price * qty
-            total += subtotal
-            invoice_item = InvoiceItem(invoice_id=invoice.id, variant_id=variant.id, quantity=qty, price=subtotal)
-            db.session.add(invoice_item)
+            total += variant.price * qty
+            total_items += 1
+            total_qty += qty
+
+            db.session.add(InvoiceItem(
+                invoice=invoice,
+                variant_id=variant.id,
+                quantity=qty,
+                price=variant.price
+            ))
+
             variant.stock -= qty
         else:
-            flash(f"Insufficient stock for {variant.product.name} ({variant.unit})", "danger")
+            db.session.rollback()
+            flash("Stock issue", "danger")
             return redirect(url_for('view_cart'))
 
     invoice.total = total
-    db.session.commit()
-    session['cart'] = {}
-    return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+    invoice.total_items = total_items
+    invoice.total_qty = total_qty
 
-@app.route('/checkout_by_mobile', methods=['POST'])
-def checkout_by_mobile():
-    phone = request.form.get('phone', '').strip()
-    if not phone or not phone.isdigit() or len(phone) != 10:
-        flash("Please enter a valid 10-digit mobile number.")
-        return redirect(url_for('view_cart'))
-
-    customer = Customer.query.filter_by(phone=phone).first()
-
-    if not customer:
-        customer = Customer(name=f"Customer {phone}", phone=phone)
-        db.session.add(customer)
-        db.session.commit()
-
-    # --- Create invoice like in /checkout ---
-    cart = session.get('cart', {})
-    if not cart:
-        flash("Cart is empty.")
-        return redirect(url_for('view_cart'))
-
-    total = 0
-    # Generate custom bill number
-    last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
-    if last_invoice and last_invoice.bill_no:
-        try:
-            last_number = int(last_invoice.bill_no.split('-')[-1])
-            new_bill_no = f"BILL-{last_number + 1:03d}"
-        except:
-            new_bill_no = "BILL-001"
-    else:
-        new_bill_no = "BILL-001"
-
-    invoice = Invoice(customer_id=customer.id, total=0, bill_no=new_bill_no)
 
     db.session.add(invoice)
     db.session.commit()
+    
+    session['cart'] = {}
+    flash("Invoice created", "success")
+    return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+'''
+
+@app.route('/checkout/<int:customer_id>')
+@login_required
+def checkout(customer_id):
+    cart = session.get('cart', {})
+    if not cart:
+        flash("Cart is empty.", "warning")
+        return redirect(url_for('view_cart'))
+
+    customer = Customer.query.get_or_404(customer_id)
+
+    last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
+    bill_no = f"BILL-{(int(last_invoice.bill_no.split('-')[-1]) + 1) if last_invoice else 1:03d}"
+
+    total_items = 0
+    total_qty = 0
+    total = 0
+    invoice_items = []
 
     for variant_id, qty in cart.items():
-        variant = db.session.get(ProductVariant, int(variant_id))
-        if variant:
-            if variant.stock < qty:
-                flash(f"Insufficient stock for {variant.product.name} ({variant.unit})", "danger")
-                return redirect(url_for('view_cart'))
+        qty = int(qty)
+        variant = ProductVariant.query.get(int(variant_id))
+        if variant and variant.stock >= qty:
+            total += variant.price * qty
+            total_items += 1
+            total_qty += qty
+            invoice_items.append(InvoiceItem(
+                variant_id=variant.id,
+                quantity=qty,
+                price=variant.price
+            ))
+            variant.stock -= qty
+        else:
+            flash(f"Insufficient stock for {variant.name if variant else 'Unknown'}", "danger")
+            return redirect(url_for('view_cart'))
+
+    invoice = Invoice(
+        customer_id=customer.id,
+        bill_no=bill_no,
+        date=datetime.now(),
+        total=total,
+        total_items=total_items,
+        total_qty=total_qty
+    )
+
+    db.session.add(invoice)
+    db.session.flush()
+
+    for item in invoice_items:
+        item.invoice_id = invoice.id
+        db.session.add(item)
+
+    try:
+        db.session.commit()
+        session['cart'] = {}
+        flash("Invoice created successfully!", "success")
+        return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+    except Exception as e:
+        db.session.rollback()
+        flash("Invoice failed: " + str(e), "danger")
+        return redirect(url_for('view_cart'))
+
+'''@app.route('/checkout_by_mobile', methods=['POST'])
+@login_required
+def checkout_by_mobile():
+    phone = request.form.get('phone', '').strip()
+    customer = None
+
+    # ✅ Validate and link customer (if valid phone provided)
+    if phone and phone.isdigit() and len(phone) == 10:
+        customer = Customer.query.filter_by(phone=phone).first()
+        if not customer:
+            customer = Customer(name=f"Customer {phone}", phone=phone)
+            db.session.add(customer)
+            db.session.flush()
+    elif phone:
+        flash("Invalid mobile number format. Skipping customer linking.", "warning")
+
+    # ✅ Check for cart data
+    cart = session.get('cart', {})
+    if not cart:
+        flash("Cart is empty.", "warning")
+        return redirect(url_for('view_cart'))
+
+    # ✅ Bill number generation
+    last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
+    bill_no_suffix = int(last_invoice.bill_no.split('-')[-1]) if last_invoice and last_invoice.bill_no and '-' in last_invoice.bill_no else 0
+    bill_no = f"BILL-{bill_no_suffix + 1:03d}"
+
+    # ✅ Create Invoice
+    invoice = Invoice(
+        customer_id=customer.id if customer else None,
+        total=0,
+        bill_no=bill_no,
+        date=datetime.utcnow()
+    )
+    db.session.add(invoice)
+    db.session.flush()
+
+    total_amount = 0
+    try:
+        for variant_id, qty in cart.items():
+            variant = db.session.get(ProductVariant, int(variant_id))
+            if not variant or variant.stock is None or variant.stock < qty:
+                raise ValueError(f"Insufficient stock for {variant.product.name if variant else 'Unknown Product'}")
 
             subtotal = variant.price * qty
-            total += subtotal
+            total_amount += subtotal
 
-            item = InvoiceItem(
+            invoice_item = InvoiceItem(
                 invoice_id=invoice.id,
                 variant_id=variant.id,
                 quantity=qty,
-                price=subtotal
+                price=variant.price
             )
-            db.session.add(item)
-
-            # ✅ Reduce stock
+            db.session.add(invoice_item)
             variant.stock -= qty
-    invoice.total = total
-    db.session.commit()
-    session['cart'] = {}
 
-    return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+        invoice.total = total_amount
+        db.session.commit()
+        session['cart'] = {}
+        flash(f"✅ Invoice {bill_no} generated successfully!", "success")
+        return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ Error: {str(e)}", "danger")
+        return redirect(url_for('view_cart'))
+'''
+@app.route('/checkout_by_mobile', methods=['POST'])
+@login_required
+def checkout_by_mobile():
+    phone = request.form.get('phone', '').strip()
+    customer = None
+
+    # 1️⃣ Handle mobile number validation and customer lookup/creation
+    if phone:
+        if phone.isdigit() and len(phone) == 10:
+            customer = Customer.query.filter_by(phone=phone).first()
+            if not customer:
+                customer = Customer(name=f"Customer {phone}", phone=phone)
+                db.session.add(customer)
+                db.session.flush()  # Needed to retrieve customer.id
+        else:
+            flash("Invalid mobile number format. Skipping customer linking.", "warning")
+
+    # 2️⃣ Get and validate cart data
+    cart = session.get('cart', {})
+    if not cart:
+        flash("Cart is empty.", "warning")
+        return redirect(url_for('view_cart'))
+
+    # 3️⃣ Calculate totals and prepare invoice items
+    total_amount = 0
+    total_items = 0
+    total_qty = 0
+    invoice_items_to_create = []
+
+    try:
+        for variant_id, qty in cart.items():
+            variant = db.session.get(ProductVariant, int(variant_id))
+            if not variant or variant.stock is None or variant.stock < qty:
+                raise ValueError(f"Insufficient stock for {variant.product.name if variant else 'Unknown Product'}")
+
+            total_amount += variant.price * qty
+            total_items += 1
+            total_qty += qty
+
+            invoice_items_to_create.append({
+                'variant': variant,
+                'quantity': qty,
+                'price': variant.price
+            })
+
+        # 4️⃣ Generate bill number
+        last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
+        last_no = int(last_invoice.bill_no.split('-')[-1]) if last_invoice and last_invoice.bill_no and '-' in last_invoice.bill_no else 0
+        bill_no = f"BILL-{last_no + 1:03d}"
+
+        # 5️⃣ Create the invoice
+        invoice = Invoice(
+            customer_id=customer.id if customer else None,
+            total=total_amount,
+            bill_no=bill_no,
+            date=datetime.utcnow(),
+            total_items=total_items,
+            total_qty=total_qty
+        )
+        db.session.add(invoice)
+        db.session.flush()
+
+        # 6️⃣ Create invoice items and update stock
+        for item in invoice_items_to_create:
+            db.session.add(InvoiceItem(
+                invoice_id=invoice.id,
+                variant_id=item['variant'].id,
+                quantity=item['quantity'],
+                price=item['price']
+            ))
+            item['variant'].stock -= item['quantity']
+
+        # 7️⃣ Final commit
+        db.session.commit()
+        session['cart'] = {}
+        flash(f"✅ Invoice {bill_no} generated successfully!", "success")
+        return redirect(url_for('generate_invoice', invoice_id=invoice.id))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ Error: {str(e)}", "danger")
+        return redirect(url_for('view_cart'))
 
 # ---------------- Invoice----------------
 @app.route('/invoices')
@@ -476,9 +934,9 @@ def checkout_by_mobile():
 def all_invoices():
     search_query = request.args.get('search', '').strip()
 
-    query = Invoice.query.join(Invoice.customer).options(joinedload(Invoice.customer))
-
+    query = Invoice.query.options(joinedload(Invoice.customer)) # Always eager load customer
     if search_query:
+        # Filter by invoice bill_no, customer name, or customer phone
         query = query.filter(
             or_(
                 Invoice.bill_no.ilike(f"%{search_query}%"),
@@ -486,14 +944,18 @@ def all_invoices():
                 Customer.phone.ilike(f"%{search_query}%")
             )
         )
-
     invoices = query.order_by(Invoice.date.desc()).all()
 
+    # Ensure invoice.date is a datetime object for formatting
     for invoice in invoices:
-        if isinstance(invoice.date, datetime):
-            invoice.date_str = invoice.date.strftime('%d-%m-%Y %H:%M')
-        else:
-            invoice.date_str = invoice.date
+        if isinstance(invoice.date, str):
+            try:
+                invoice.date = datetime.fromisoformat(invoice.date)
+            except ValueError:
+                invoice.date = None # Or handle error appropriately
+        # If it's already datetime, no conversion needed.
+        # Format for display in template
+        invoice.display_date = invoice.date.strftime('%d-%m-%Y %H:%M') if invoice.date else 'N/A'
 
     return render_template('invoice_list.html', invoices=invoices, search_query=search_query)
 
@@ -501,24 +963,30 @@ def all_invoices():
 @login_required
 @admin_required
 def generate_invoice(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
-    items = invoice.items 
+    invoice = Invoice.query.options(joinedload(Invoice.customer), joinedload(Invoice.items).joinedload(InvoiceItem.variant).joinedload(ProductVariant.product)).get_or_404(invoice_id)
+    
     items = [{
         'name': item.variant.product.name,
         'qty': item.quantity,
-        'price': item.variant.price,
+        'price': item.price, # Use the price stored in InvoiceItem (price at time of sale)
         'unit': item.variant.unit,
-        'subtotal': item.quantity * item.variant.price
+        'subtotal': item.quantity * item.price # Calculate subtotal based on stored price
     } for item in invoice.items]
 
-    # Calculate totals
     total_items = len(items)
     total_qty = sum(item['qty'] for item in items)
-    total = sum(item['subtotal'] for item in items)
+    total = sum(item['subtotal'] for item in items) # This should match invoice.total
 
-    now = datetime.now()
-    date_str = now.strftime('%Y-%m-%d')
-    time_str = now.strftime('%H:%M:%S')
+    # Ensure invoice.date is a datetime object for formatting in template
+    if isinstance(invoice.date, str):
+        try:
+            invoice.date = datetime.fromisoformat(invoice.date)
+        except ValueError:
+            invoice.date = None
+    
+    # Pass date and time strings for consistent display in PDF
+    date_str = invoice.date.strftime('%Y-%m-%d') if invoice.date else 'N/A'
+    time_str = invoice.date.strftime('%H:%M:%S') if invoice.date else 'N/A'
 
     html = render_template(
         'invoice.html',
@@ -527,38 +995,39 @@ def generate_invoice(invoice_id):
         total_items=total_items,
         total_qty=total_qty,
         total=total,
-        date_str=date_str,   
+        date_str=date_str,
         time_str=time_str
     )
 
-    # PDF generation
     result = BytesIO()
     pisa_status = pisa.CreatePDF(html, dest=result)
     if pisa_status.err:
-        return "Error generating PDF"
+        flash(f"Error generating PDF for Invoice {invoice.bill_no}: {pisa_status.err}", "danger")
+        return "Error generating PDF", 500
 
     response = make_response(result.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'inline; filename=invoice_{invoice.id}.pdf'
+    response.headers['Content-Disposition'] = f'inline; filename=invoice_{invoice.bill_no}.pdf'
     return response
 
-@app.route('/delete_invoice/<int:invoice_id>')
+@app.route('/delete_invoice/<int:invoice_id>', methods=['POST']) # Use POST for deletion
 @login_required
 @admin_required
 def delete_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
-    
-    # Delete invoice items first
+
+    # Delete invoice items first and restore stock
     for item in invoice.items:
-        variant = item.variant
-        variant.stock += item.quantity  # restore stock
+        variant = ProductVariant.query.get(item.variant_id) # Fetch variant directly using ID from item
+        if variant: # Only restore stock if variant still exists
+            variant.stock = (variant.stock or 0) + item.quantity  # Restore stock, handle None case
         db.session.delete(item)
-    
+
     db.session.delete(invoice)
     db.session.commit()
-    
-    flash(f"Invoice {invoice.bill_no} deleted.", "info")
-    return redirect(url_for('home'))
+
+    flash(f"Invoice {invoice.bill_no} deleted and stock restored.", "info")
+    return redirect(url_for('all_invoices')) # Redirect to the all invoices page
 
 # ---------------- Sales Report ----------------
 @app.route('/sales_report')
@@ -573,9 +1042,13 @@ def sales_report():
         try:
             start_dt = datetime.strptime(start, '%Y-%m-%d')
             end_dt = datetime.strptime(end, '%Y-%m-%d')
+            # Adjust end_dt to include the entire end day
+            end_dt = end_dt.replace(hour=23, minute=59, second=59)
             query = query.filter(Invoice.date.between(start_dt, end_dt))
         except ValueError:
-            flash("Invalid date format", "danger")
+            flash("Invalid date format. Please use YYYY-MM-DD.", "danger")
+            # Fallback to no date filter if invalid
+            query = Invoice.query
 
     invoices = query.order_by(Invoice.date.desc()).all()
     total_sales = sum(i.total for i in invoices)
@@ -584,24 +1057,41 @@ def sales_report():
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
 
+    # Ensure func.date() is applied correctly for comparison with date objects
     daily = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) == today).scalar() or 0
-    weekly = db.session.query(func.sum(Invoice.total)).filter(Invoice.date >= week_start).scalar() or 0
-    monthly = db.session.query(func.sum(Invoice.total)).filter(Invoice.date >= month_start).scalar() or 0
+    weekly = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= week_start).scalar() or 0
+    monthly = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= month_start).scalar() or 0
 
     return render_template('sales_report.html', invoices=invoices, total_sales=total_sales,
-                           daily_total=daily, weekly_total=weekly, monthly_total=monthly)
+                            daily_total=daily, weekly_total=weekly, monthly_total=monthly,
+                            selected_start=start, selected_end=end) # Pass selected dates back
 
 # ---------------- Download CSV/PDF ----------------
 @app.route('/download_sales_csv')
 @login_required
 @admin_required
 def download_sales_csv():
-    invoices = Invoice.query.order_by(Invoice.date.desc()).all()
+    # Filter by date range if provided in the request args, similar to sales_report
+    start = request.args.get('start')
+    end = request.args.get('end')
+    query = Invoice.query.options(joinedload(Invoice.customer))
+
+    if start and end:
+        try:
+            start_dt = datetime.strptime(start, '%Y-%m-%d')
+            end_dt = datetime.strptime(end, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            query = query.filter(Invoice.date.between(start_dt, end_dt))
+        except ValueError:
+            pass # Ignore invalid dates, download all
+
+    invoices = query.order_by(Invoice.date.desc()).all()
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Invoice ID', 'Customer', 'Date', 'Total'])
+    writer.writerow(['Invoice ID', 'Bill No', 'Customer Name', 'Customer Phone', 'Date', 'Total'])
     for i in invoices:
-        writer.writerow([i.id, i.customer.name, i.date.strftime('%Y-%m-%d'), i.total])
+        customer_name = i.customer.name if i.customer else 'N/A'
+        customer_phone = i.customer.phone if i.customer else 'N/A'
+        writer.writerow([i.id, i.bill_no, customer_name, customer_phone, i.date.strftime('%Y-%m-%d %H:%M:%S'), i.total])
     response = make_response(output.getvalue())
     response.headers['Content-Disposition'] = 'attachment; filename=sales_report.csv'
     response.headers['Content-type'] = 'text/csv'
@@ -611,12 +1101,46 @@ def download_sales_csv():
 @login_required
 @admin_required
 def download_sales_pdf():
-    invoices = Invoice.query.order_by(Invoice.date.desc()).all()
-    html = render_template('sales_report_pdf.html', invoices=invoices)
+    # Filter by date range if provided in the request args, similar to sales_report
+    start = request.args.get('start')
+    end = request.args.get('end')
+    query = Invoice.query.options(joinedload(Invoice.customer), joinedload(Invoice.items).joinedload(InvoiceItem.variant).joinedload(ProductVariant.product))
+
+    if start and end:
+        try:
+            start_dt = datetime.strptime(start, '%Y-%m-%d')
+            end_dt = datetime.strptime(end, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            query = query.filter(Invoice.date.between(start_dt, end_dt))
+        except ValueError:
+            pass # Ignore invalid dates, download all
+
+    invoices = query.order_by(Invoice.date.desc()).all()
+
+    # Prepare data for PDF template
+    invoices_data = []
+    for invoice in invoices:
+        items_data = [{
+            'name': item.variant.product.name,
+            'qty': item.quantity,
+            'price': item.price,
+            'subtotal': item.quantity * item.price
+        } for item in invoice.items]
+        invoices_data.append({
+            'invoice_id': invoice.id,
+            'bill_no': invoice.bill_no,
+            'customer_name': invoice.customer.name if invoice.customer else 'Walk-in Customer',
+            'customer_phone': invoice.customer.phone if invoice.customer else 'N/A',
+            'date': invoice.date.strftime('%Y-%m-%d %H:%M:%S') if invoice.date else 'N/A',
+            'total': invoice.total,
+            'items': items_data
+        })
+
+    html = render_template('sales_report_pdf.html', invoices=invoices_data, current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     result = BytesIO()
     pisa_status = pisa.CreatePDF(html, dest=result)
     if pisa_status.err:
-        return "PDF generation failed"
+        flash(f"Error generating PDF: {pisa_status.err}", "danger")
+        return "PDF generation failed", 500
     response = make_response(result.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'attachment; filename=sales_report.pdf'
@@ -636,7 +1160,7 @@ def get_cart_items(cart):
 
 @app.context_processor
 def inject_now():
-    return {'current_year': datetime.now().year}
+    return {'current_year': datetime.now().year, 'current_user': current_user} # Inject current_user for base.html
 
 @app.template_filter('format_date')
 def format_date(value, format='%d-%m-%Y %H:%M'):
@@ -650,10 +1174,16 @@ def format_date(value, format='%d-%m-%Y %H:%M'):
 def add_customer():
     form = CustomerForm()
     if form.validate_on_submit():
+        # Check for existing phone number before adding
+        existing_customer = Customer.query.filter_by(phone=form.phone.data.strip()).first()
+        if existing_customer:
+            flash("A customer with this phone number already exists.", "warning")
+            return render_template('add_customer.html', form=form)
+
         customer = Customer(name=form.name.data.strip(), phone=form.phone.data.strip())
         db.session.add(customer)
         db.session.commit()
-        flash("Customer added!", "success")
+        flash("Customer added successfully!", "success")
         return redirect(url_for('customers'))
     return render_template('add_customer.html', form=form)
 
@@ -680,7 +1210,61 @@ def search_customer():
 
     return render_template('customers.html', customers=customers)
 
+@app.route('/edit_customer/<int:customer_id>', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_customer(customer_id):
+    customer = Customer.query.get_or_404(customer_id)
+    form = CustomerForm(obj=customer)
+    if form.validate_on_submit():
+        # Check for duplicate phone number, excluding the current customer being edited
+        existing_customer = Customer.query.filter(
+            Customer.phone == form.phone.data.strip(),
+            Customer.id != customer_id
+        ).first()
+        if existing_customer:
+            flash("A customer with this phone number already exists.", "warning")
+            return render_template('edit_customer.html', form=form, customer=customer)
+
+        customer.name = form.name.data.strip()
+        customer.phone = form.phone.data.strip()
+        db.session.commit()
+        flash("Customer updated successfully!", "success")
+        return redirect(url_for('customers'))
+    return render_template('edit_customer.html', form=form, customer=customer)
+
+@app.route('/delete_customer/<int:customer_id>', methods=['POST'])
+@login_required
+@admin_required
+def delete_customer(customer_id):
+    customer = Customer.query.get_or_404(customer_id)
+    # Optional: Check if the customer has any invoices before deleting, and prevent if so
+    if customer.invoices:
+        flash("Cannot delete customer with associated invoices. Delete invoices first.", "danger")
+        return redirect(url_for('customers'))
+    
+    db.session.delete(customer)
+    db.session.commit()
+    flash("Customer deleted successfully!", "success")
+    return redirect(url_for('customers'))
+
+# ---------------- Settings ----------------
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def settings():
+    settings_data = {
+        'business_name': 'My Store',
+        'business_phone': '9876543210',
+        'business_address': 'Main Street',
+        'invoice_prefix': 'INV2025-',
+        'tax_percentage': 5,
+        'invoice_footer': 'Thank you for shopping!',
+        'payment_methods': 'Cash, Card, UPI'
+    }
+    return render_template('settings.html', settings=settings_data,user=current_user)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        app.run(debug=True)
+    app.run(debug=True)

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2 class="mb-4">Add New Product</h2>
+<h2 class="mb-4">Edit Product</h2>
 <form method="POST">
     {{ form.csrf_token }}
     <div class="mb-3">
@@ -51,15 +51,13 @@
     </div>
     <button type="button" class="btn btn-secondary mt-3" id="add-variant-btn">Add Variant</button>
 
-    <button type="submit" class="btn btn-primary mt-4">Add Product</button>
+    <button type="submit" class="btn btn-primary mt-4">Update Product</button>
 </form>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const variantsContainer = document.getElementById('variants-container');
         const addVariantBtn = document.getElementById('add-variant-btn');
-
-        let nextIndex = variantsContainer.children.length; // Start index from existing forms
 
         // Function to create a new variant form row
         function createVariantRow(index) {
@@ -93,16 +91,16 @@
 
         // Add Variant Button Click
         addVariantBtn.addEventListener('click', function() {
+            const nextIndex = variantsContainer.children.length;
             const newRow = createVariantRow(nextIndex);
             variantsContainer.appendChild(newRow);
-            nextIndex++;
         });
 
         // Remove Variant Button Click (Delegated event handling)
         variantsContainer.addEventListener('click', function(event) {
             if (event.target.classList.contains('remove-variant-btn')) {
                 event.target.closest('.variant-item').remove();
-                // Re-index remaining forms
+                // Re-index remaining forms (optional but good for clean data submission)
                 Array.from(variantsContainer.children).forEach((row, i) => {
                     row.querySelectorAll('input, select, textarea').forEach(input => {
                         const oldName = input.name;

@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    
+    {% extends 'base.html' %}
+{% block title %}Your Cart{% endblock %}
+{% block content %}
+
     <div class="container mt-5">
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
@@ -34,5 +37,6 @@
             </div>
         </div>
     </div>
+    {% endblock %}
 </body>
 </html>

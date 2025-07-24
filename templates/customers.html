@@ -4,100 +4,105 @@
     <meta charset="UTF-8">
     <title>Customer List</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body.customer-page {
-            background-color: #f8f9fa;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
 
-        h2 {
-            font-weight: 600;
-            color: #343a40;
-        }
+    {% extends 'base.html' %}
+{% block title %}Customer List{% endblock %}
 
-        .table-hover tbody tr:hover {
-            background-color: #f1f3f5;
-        }
+{% block content %}
+<style>
+    body.customer-page {
+        background-color: #f8f9fa;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
 
-        .form-control {
-            width: 250px;
-            margin-right: 1rem;
-        }
+    h2 {
+        font-weight: 600;
+        color: #343a40;
+    }
 
-        .form-inline {
-            display: flex;
-            align-items: center;
-        }
+    .table-hover tbody tr:hover {
+        background-color: #f1f3f5;
+    }
 
-        .table td, .table th {
-            vertical-align: middle;
-        }
+    .form-control {
+        width: 250px;
+        margin-right: 1rem;
+    }
 
-        .mono {
-            font-family: 'Courier New', Courier, monospace;
-        }
+    .form-inline {
+        display: flex;
+        align-items: center;
+    }
 
-        .btn-sm {
-            font-size: 0.875rem;
-            padding: 0.4rem 0.75rem;
-        }
+    .table td, .table th {
+        vertical-align: middle;
+    }
 
-        .alert-warning {
-            font-weight: 500;
-        }
+    .mono {
+        font-family: 'Courier New', Courier, monospace;
+    }
 
-        .top-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-    </style>
-</head>
-<body class="customer-page">
-    <div class="container mt-5">
-        <div class="top-controls mb-4">
-            <h2 class="mb-0">Customer List</h2>
+    .btn-sm {
+        font-size: 0.875rem;
+        padding: 0.4rem 0.75rem;
+    }
 
-            <form method="get" action="{{ url_for('search_customer') }}" class="form-inline">
-                <input type="text" name="q" class="form-control" placeholder="Search by ID, Name, or Mobile">
-                <button type="submit" class="btn btn-outline-primary btn-sm">Search</button>
-            </form>
+    .alert-warning {
+        font-weight: 500;
+    }
 
-            <a href="{{ url_for('add_customer') }}" class="btn btn-primary btn-sm">+ Add New Customer</a>
-        </div>
+    .top-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+</style>
 
-        {% if customers %}
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Phone</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for customer in customers %}
-                    <tr>
-                        <td class="mono">{{ customer.id }}</td>
-                        <td>{{ customer.name }}</td>
-                        <td class="mono">{{ customer.phone }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-            <div class="alert alert-warning">No customers found.</div>
-        {% endif %}
+<div class="container mt-5">
+    <div class="top-controls mb-4">
+        <h2 class="mb-0">Customer List</h2>
+
+        <form method="get" action="{{ url_for('search_customer') }}" class="form-inline">
+            <input type="text" name="q" class="form-control" placeholder="Search by ID, Name, or Mobile">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Search</button>
+        </form>
+
+        <a href="{{ url_for('add_customer') }}" class="btn btn-primary btn-sm">+ Add New Customer</a>
     </div>
 
-    <div class="text-center mt-4">
-        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Product List</a>
+    {% if customers %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Phone</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in customers %}
+                <tr>
+                    <td class="mono">{{ customer.id }}</td>
+                    <td>{{ customer.name }}</td>
+                    <td class="mono">{{ customer.phone }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+    {% else %}
+        <div class="alert alert-warning">No customers found.</div>
+    {% endif %}
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<div class="text-center mt-4">
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Product List</a>
+</div>
+{% endblock %}
+
 </body>
 </html>
+

@@ -7,89 +7,7 @@
 </head>
 <body class="container py-4">
 
-    <h2>Search Results for "{{ query }}"</h2>
-
-    {% if starts_with_results or contains_results %}
-        <table class="table table-bordered text-center">
-            <thead>
-                <tr>
-                    <th>Product</th>
-                    <th>Unit</th>
-                    <th>Price</th>
-                    <th>Add Quantity</th>
-                </tr>
-            </thead>
-            <tbody>
-
-            {% if starts_with_results %}
-                <tr class="table-info">
-                    <td colspan="4" class="text-start fw-bold">Starts with "{{ query }}"</td>
-                </tr>
-                {% for product in starts_with_results %}
-                    {% for variant in product.variants %}
-                    <tr>
-                        <td>
-                            <strong>{{ product.name }}</strong><br>
-                            {% if product.tamil_name %}
-                                <small class="text-muted">[{{ product.tamil_name }}]</small><br>
-                            {% endif %}
-                            {% if product.romanized_name %}
-                                <small class="text-muted fst-italic">({{ product.romanized_name }})</small>
-                            {% endif %}
-                        </td>
-                        <td>{{ variant.unit }}</td>
-                        <td>₹{{ variant.price }}</td>
-                        <td>
-                            <form method="POST" action="{{ url_for('add_to_cart_with_quantity') }}" class="d-flex justify-content-center">
-                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
-                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 80px;">
-                                <button type="submit" class="btn btn-sm btn-primary">Add</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% endfor %}
-            {% endif %}
-
-            {% if contains_results %}
-                <tr class="table-secondary">
-                    <td colspan="4" class="text-start fw-bold">Contains "{{ query }}"</td>
-                </tr>
-                {% for product in contains_results %}
-                    {% for variant in product.variants %}
-                    <tr>
-                        <td>
-                            <strong>{{ product.name }}</strong><br>
-                            {% if product.tamil_name %}
-                                <small class="text-muted">[{{ product.tamil_name }}]</small><br>
-                            {% endif %}
-                            {% if product.romanized_name %}
-                                <small class="text-muted fst-italic">({{ product.romanized_name }})</small>
-                            {% endif %}
-                        </td>
-                        <td>{{ variant.unit }}</td>
-                        <td>₹{{ variant.price }}</td>
-                        <td>
-                            <form method="POST" action="{{ url_for('add_to_cart_with_quantity') }}" class="d-flex justify-content-center">
-                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
-                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 80px;">
-                                <button type="submit" class="btn btn-sm btn-primary">Add</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% endfor %}
-            {% endif %}
-
-            </tbody>
-        </table>
-    {% else %}
-        <p>No products found.</p>
-    {% endif %}
-
-    <hr>
-
-    {% if cart_items %}
+        {% if cart_items %}
     <h4>Current Cart</h4>
     <table class="table table-bordered text-center">
         <thead>
@@ -123,7 +41,7 @@
     <h5>Total: ₹{{ total }}</h5>
 
     <div class="d-flex gap-2 mb-4">
-        <a href="{{ url_for('view_cart') }}" class="btn btn-primary">Go to Checkout</a>
+        <a href="{{ url_for('view_cart',bill_no=active_bill) }}" class="btn btn-primary">Go to Checkout</a>
         <a href="{{ url_for('clear_cart') }}" class="btn btn-danger">Clear Cart</a>
         <a href="{{ url_for('home') }}" class="btn btn-secondary">Back to Home</a>
     </div>
@@ -133,47 +51,90 @@
         <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Home Page</a>
     </div>
 
-    <input type="text" id="search" placeholder="Search for products..." autocomplete="off">
-<div id="suggestions" style="border: 1px solid #ccc; display: none; max-height: 200px; overflow-y: auto;"></div>
+    <h2>Search Results for "{{ query }}"</h2>
 
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const searchInput = document.getElementById("search");
-    const suggestionsDiv = document.getElementById("suggestions");
+    {% if starts_with_results or contains_results %}
+        <table class="table table-bordered text-center">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Unit</th>
+                    <th>Price</th>
+                    <th>Add Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
 
-    searchInput.addEventListener("input", function () {
-        const query = this.value;
-        if (query.length === 0) {
-            suggestionsDiv.innerHTML = "";
-            suggestionsDiv.style.display = "none";
-            return;
-        }
+            {% if starts_with_results %}
+                <tr class="table-info">
+                    <td colspan="4" class="text-start fw-bold">Starts with "{{ query }}"</td>
+                </tr>
+                {% for product in starts_with_results %}
+                    {% for variant in product.variants %}
+                    <tr>
+                        <td>
+                            <strong>{{ product.name }}</strong><br>
+                            {% if product.tamil_name %}
+                                <small class="text-muted">[{{ product.tamil_name }}]</small><br>
+                            {% endif %}
+                            {% if product.romanized_name %}
+                                <small class="text-muted fst-italic">({{ product.romanized_name }})</small><br>
+                            {% endif %}
+                            {% if variant.barcode %}
+                                <span class="text-muted">Barcode: {{ variant.barcode }}</span>
+                            {% endif %}
+                        </td>
 
-        fetch(`/suggest_products?query=${encodeURIComponent(query)}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.length === 0) {
-                    suggestionsDiv.innerHTML = "<p style='padding: 5px;'>No matches found</p>";
-                } else {
-                    suggestionsDiv.innerHTML = data.map(item =>
-                        `<div style="padding: 5px; cursor: pointer;" onclick="selectSuggestion('${item.name}')">${item.name}</div>`
-                    ).join('');
-                }
-                suggestionsDiv.style.display = "block";
-            })
-            .catch(error => {
-                console.error('Error fetching suggestions:', error);
-                suggestionsDiv.innerHTML = "";
-                suggestionsDiv.style.display = "none";
-            });
-    });
-});
+                        <td>{{ variant.unit }}</td>
+                        <td>₹{{ variant.price }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('add_to_cart_with_quantity') }}" class="d-flex justify-content-center">
+                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
+                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 80px;">
+                                <button type="submit" class="btn btn-sm btn-primary">Add</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            {% endif %}
 
-function selectSuggestion(name) {
-    document.getElementById("search").value = name;
-    document.getElementById("suggestions").style.display = "none";
-}
-</script>
+            {% if contains_results %}
+                <tr class="table-secondary">
+                    <td colspan="4" class="text-start fw-bold">Contains "{{ query }}"</td>
+                </tr>
+                {% for product in contains_results %}
+                    {% for variant in product.variants %}
+                    <tr>
+                        <td>
+                            <strong>{{ product.name }}</strong><br>
+                            {% if product.tamil_name %}
+                                <small class="text-muted">[{{ product.tamil_name }}]</small><br>
+                            {% endif %}
+                            {% if product.romanized_name %}
+                                <small class="text-muted fst-italic">({{ product.romanized_name }})</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ variant.unit }}</td>
+                        <td>₹{{ variant.price }}</td>
+                        <td>
+                           <form method="POST" action="{{ url_for('add_to_cart_with_quantity') }}" class="d-flex justify-content-center">
+                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
+                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 80px;">
+                                <button type="submit" class="btn btn-sm btn-primary">Add</button>
+                            </form>
+                            
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            {% endif %}
+
+            </tbody>
+        </table>
+    {% else %}
+        <p>No products found.</p>
+    {% endif %}
 
 </body>
 </html> 

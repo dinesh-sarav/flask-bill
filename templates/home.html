@@ -1,204 +1,134 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billing Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            font-family: 'Poppins', sans-serif;
-        }
+{% extends "base.html" %}
+{% block content %}
 
-        .dashboard {
-            display: flex;
-            height: 100vh;
-        }
+<div class="row">
+    <!-- Product Search Sidebar -->
+    <div class="col-md-4">
+        <div class="card mb-3" style="position: sticky; top: 20px; max-height: 90vh; overflow-y: auto;">
+            <div class="card-header bg-secondary text-white">Product Search</div>
+            <div class="card-body">
+                <form action="{{ url_for('search_product') }}" method="GET" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Search by name or barcode..." value="{{ query or '' }}">
+                        <button class="btn btn-outline-light" type="submit">Search</button>
+                    </div>
+                </form>
 
-        .sidebar {
-            width: 220px;
-            background-color: #2f3542;
-            color: white;
-            padding: 20px;
-        }
-
-        .sidebar .logo {
-            font-size: 1.4rem;
-            font-weight: bold;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .sidebar .menu {
-            list-style: none;
-            padding: 0;
-        }
-
-        .sidebar .menu li {
-            margin: 15px 0;
-        }
-
-        .sidebar .menu a {
-            color: white;
-            text-decoration: none;
-            font-size: 1rem;
-            display: block;
-        }
-
-        .sidebar .menu a:hover {
-            background-color: #57606f;
-            padding: 10px;
-            border-radius: 5px;
-        }
-
-        .main-panel {
-            flex-grow: 1;
-            padding: 30px;
-            background-color: #f1f2f6;
-            overflow-y: auto;
-        }
-
-        .card {
-            border-radius: 10px;
-        }
-    </style>
-</head>
-<body>
-<div class="dashboard">
-
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="logo">Your Shop</div>
-        <ul class="menu">
-            <li><a href="{{ url_for('home') }}">🏠 Home</a></li>
-            <li><a href="{{ url_for('add_product') }}">📦 Add Product</a></li>
-            <li><a href="{{ url_for('customers') }}">👥 Customers</a></li>
-            <li><a href="{{ url_for('view_cart') }}">🛒 Cart</a></li>
-            <li><a href="{{ url_for('all_invoices') }}">🧾 Invoices</a></li>
-            <li><a href="{{ url_for('upload_products') }}">➕ Upload Products</a></li>
-            <li><a href="{{ url_for('sales_report') }}">📊 Sales Report</a></li>
-            <li><a href="{{ url_for('stock') }}">📋 Stock</a></li>
-        </ul>
-    </aside>
-
-    <!-- Main Panel -->
-    <main class="main-panel">
-
-        <!-- Search -->
-        <form action="{{ url_for('search_product') }}" method="GET" class="row g-2 justify-content-center my-4">
-            <div class="col-md-6">
-                <input type="text" name="q" class="form-control" placeholder="Search product..." required>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-outline-primary">Search</button>
-            </div>
-        </form>
-
-        <!-- Add Product Button -->
-        <div class="text-center mt-4">
-            <a href="{{ url_for('add_product') }}" class="btn btn-primary">+ Add New Product</a>
-        </div>
-
-        <!-- Cart Section -->
-        {% if cart_items %}
-        <div class="d-flex justify-content-center">
-            <div class="card mt-5 shadow" style="width: 600px;">
-                <div class="card-header bg-primary text-white text-center">🧾 Items in Bill</div>
-                <div class="card-body">
-                    <ul class="list-group mb-3">
-                        {% for item in cart_items %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>{{ item.product.name }}</strong>
-                                <small class="text-muted">({{ item.variant.unit }})</small><br>
-                                <small>{{ item.quantity }} × ₹{{ item.variant.price }}</small>
-                            </div>
-                            <span class="fw-bold">₹{{ item.subtotal }}</span>
-                        </li>
+                {% if products %}
+                    <ul class="list-group">
+                        {% for product in products %}
+                            <li class="list-group-item">
+                                <strong>{{ product.name }}</strong> ({{ product.tamil_name }})
+                                {% if product.barcode %}
+                                    <br><small class="text-muted">Barcode: {{ product.barcode }}</small>
+                                {% endif %}
+                                <ul class="mt-2">
+                                    {% for variant in product.variants %}
+                                        <li class="d-flex justify-content-between align-items-center">
+                                            <span>{{ variant.unit }} - ₹{{ variant.price | round(2) }} </span>
+                                            <form action="{{ url_for('add_to_cart_with_quantity') }}" method="POST" class="d-flex">
+                                                <input type="hidden" name="variant_id" value="{{ variant.id }}">
+                                                <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 70px;">
+                                                <button class="btn btn-success btn-sm" type="submit">Add</button>
+                                            </form>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </li>
                         {% endfor %}
                     </ul>
+                {% else %}
+                    <p class="text-muted">No products found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 
-                    <h5 class="text-end mb-3">Total: ₹{{ total }}</h5>
+    <!-- Main Dashboard Content -->
+    <div class="col-md-8">
+        <div class="row mb-3">
+            <!-- Active Bills -->
+            <div class="col-md-4">
+                <div class="card text-white bg-primary mb-3">
+                    <div class="card-header">Active Bills</div>
+                    <div class="card-body">
+                        {% if active_carts %}
+                            <h5 class="card-title">{{ active_carts | length }} Active</h5>
+                            <p>Bills in progress.</p>
+                        {% else %}
+                            <h5 class="card-title">Active</h5>
+                            <p>Active bills.</p>
+                        {% endif %}
+                        <a href="{{ url_for('view_cart') }}" class="btn btn-sm btn-light">View Current</a>
+                    </div>
+                </div>
+            </div>
 
-                    <div class="text-end">
-                        <a href="{{ url_for('view_cart') }}" class="btn btn-success">🧾 Generate Bill</a>
+            <!-- Low Stock -->
+            <div class="col-md-4">
+                <div class="card text-white bg-warning mb-3">
+                    <div class="card-header">Low Stock Items</div>
+                    <div class="card-body">
+                        <h5 class="card-title">{{ low_stock_variants | length }} Items</h5>
+                        <p>Products running low.</p>
+                        <a href="{{ url_for('stock', filter='low') }}" class="btn btn-sm btn-light">View Stock</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Last Invoice -->
+            <div class="col-md-4">
+                <div class="card text-white bg-info mb-3">
+                    <div class="card-header">Last Invoice</div>
+                    <div class="card-body">
+                        {% if last_invoice %}
+                            <h5 class="card-title">#{{ last_invoice.bill_no }}</h5>
+                            <p>Generated on {{ last_invoice.date_obj | format_date }}</p>
+                            <a href="{{ url_for('generate_invoice', invoice_id=last_invoice.id) }}" class="btn btn-sm btn-light">Print Bill</a>
+                        {% else %}
+                            <h5>N/A</h5>
+                            <p>No invoices yet.</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
-        {% endif %}
 
-        <!-- Last Bill -->
-        {% if last_invoice %}
-        <div class="card mt-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">🧾 Last Bill: Invoice #{{ last_invoice.bill_no }}</h5>
-                <a href="{{ url_for('delete_invoice', invoice_id=last_invoice.id) }}" class="btn btn-sm btn-danger">Clear</a>
+        <!-- Current Bill -->
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                Current Bill (Session)
+                <a href="{{ url_for('view_cart') }}" class="btn btn-sm btn-light">View Full Cart</a>
             </div>
-            <div class="card-body">
-                <p><strong>Customer:</strong> {{ last_invoice.customer.name }}</p>
-                <p><strong>Total:</strong> ₹{{ last_invoice.total }}</p>
-                <!--<p><strong>Date:</strong> {{ last_invoice.date.strftime('%d-%m-%Y %H:%M') }}</p>-->
-                <p><strong>Date:</strong> {{ last_invoice.date }}</p>
-                <a href="{{ url_for('generate_invoice', invoice_id=last_invoice.id) }}" class="btn btn-sm btn-primary">View Bill</a>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- All Invoices -->
-        {% if invoices %}
-        <div class="card mt-4">
-            <div class="card-header bg-dark text-white">
-                <h5 class="mb-0">🧾 All Invoices</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-bordered align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Invoice #</th>
-                                <th>Customer</th>
-                                <th>Total</th>
-                                <th>Date</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for invoice in invoices %}
-                            <tr>
-                                <td>#BILL-{{ "%03d"|format(invoice.id) }}</td>
-                                <td>{{ invoice.customer.name if invoice.customer else "N/A" }}</td>
-                                <td>₹{{ invoice.total or 0 }}</td>
-                                <td>{{ invoice.date.strftime("%d-%m-%Y %H:%M") }}</td>
-                                <td>
-                                    <a href="{{ url_for('generate_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-outline-primary">View</a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Low Stock Alert -->
-        {% if low_stock_variants %}
-        <div class="alert alert-warning mt-4">
-            <strong>Low Stock Alert:</strong>
-            <ul class="mb-0">
-                {% for variant in low_stock_variants %}
-                <li>{{ variant.product.name }} ({{ variant.unit }}) - Only {{ variant.stock }} left!</li>
-                {% endfor %}
+            <ul class="list-group list-group-flush">
+                {% if cart_items %}
+                    {% for item in cart_items %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                {{ item.product.name }} ({{ item.variant.unit }}) × {{ item.quantity }}<br>
+                                <small>Subtotal: ₹{{ item.subtotal | round(2) }}</small>
+                            </div>
+                            <div>
+                                <a href="{{ url_for('increase_quantity', variant_id=item.variant.id) }}" class="btn btn-outline-success btn-sm me-1">+</a>
+                                <a href="{{ url_for('decrease_quantity', variant_id=item.variant.id) }}" class="btn btn-outline-warning btn-sm me-1">-</a>
+                                <a href="{{ url_for('remove_from_cart', variant_id=item.variant.id) }}" class="btn btn-outline-danger btn-sm">x</a>
+                            </div>
+                        </li>
+                    {% endfor %}
+                    <li class="list-group-item active d-flex justify-content-between align-items-center">
+                        <strong>Total</strong> <strong>₹{{ total | round(2) }}</strong>
+                    </li>
+                    <li class="list-group-item text-center">
+                        <a href="{{ url_for('view_cart') }}" class="btn btn-success w-100">Proceed to Checkout</a>
+                       
+                    </li>
+                {% else %}
+                    <li class="list-group-item text-center text-muted py-4">
+                        Cart is empty. Add products.
+                    </li>
+                {% endif %}
             </ul>
         </div>
-        {% endif %}
-    </main>
+    </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+{% endblock %}

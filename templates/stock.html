@@ -1,107 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f1f2f6;
-            padding: 30px;
-        }
-        h2 {
-            font-weight: 600;
-        }
-        .product-table th {
-            font-weight: 600;
-            background-color: #007bff !important;
-            color: white;
-            vertical-align: middle;
-        }
-        .product-table td {
-            background-color: #ffffff;
-            vertical-align: middle;
-        }
-        .product-table tr:hover {
-            background-color: #f8f9fa;
-            transition: 0.2s ease-in-out;
-        }
-        .table-responsive {
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        .dropdown-menu {
-            font-size: 0.95rem;
-        }
-        .alert {
-            font-size: 0.95rem;
-        }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
 
-<div class="container">
-    <h2 class="text-center mb-4">📋 Product Stock</h2>
-    <h6 class="text-end text-muted mb-3">
-        Total items in stock: {{ products | map(attribute='total_stock') | sum }}
-    </h6>
+<h2>{{ filter_label }}</h2>
 
-    <form method="get" action="{{ url_for('stock') }}" class="mb-3">
-    <input type="text" name="search" class="form-control" placeholder="Search by Name, Tamil, or Romanized">
-    <button type="submit" class="btn btn-primary mt-2">Search</button>
-</form>
-
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        {{ messages[0] }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {% endif %}
-    {% endwith %}
-
-    <div class="table-responsive shadow-sm p-3 rounded bg-white">
-        <table class="table table-bordered table-hover text-center align-middle table-striped product-table">
-            <thead class="table-primary text-dark">
-                <tr>
-                    <th>Name</th>
-                    <th>Total Stock</th>
-                    <th>Variants</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for product in products %}
-                <tr>
-                    <td class="fw-semibold text-start">{{ product.name }}</td>
-                    <td>{{ product.total_stock }}</td>
-                    <td>
-                        <div class="dropdown">
-                            <button class="btn btn-info btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                Show
-                            </button>
-                            <ul class="dropdown-menu">
-                                {% for variant in product.variants %}
-                                <li class="dropdown-item text-wrap">
-                                    {{ variant.unit }} – ₹{{ variant.price }} ({{ variant.stock }} left)
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="text-center mt-3">
-        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Product List</a>
-    </div>
+<!-- Filter Buttons -->
+<div class="mb-3">
+  <a href="{{ url_for('stock', filter='all', search=search_query) }}" class="btn btn-secondary {% if filter_type == 'all' %}active{% endif %}">All</a>
+  <a href="{{ url_for('stock', filter='low', search=search_query) }}" class="btn btn-warning {% if filter_type == 'low' %}active{% endif %}">Low Stock</a>
+  <a href="{{ url_for('stock', filter='high', search=search_query) }}" class="btn btn-success {% if filter_type == 'high' %}active{% endif %}">High Stock</a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<!-- Search Form -->
+<form method="get" action="{{ url_for('stock') }}" class="form-inline mb-3">
+  <input type="text" name="search" class="form-control mr-2" placeholder="Search by Name, Tamil, or Romanized" value="{{ search_query }}">
+  <button class="btn btn-primary">Search</button>
+</form>
+
+<!-- Bulk Delete Form -->
+<form method="POST" action="{{ url_for('delete_product') }}" id="bulkDeleteForm" onsubmit="return confirm('Are you sure you want to delete selected products?');">
+  <input type="hidden" name="selected_ids" id="selected_ids_input">
+  <button type="submit" class="btn btn-danger mb-3">Delete Selected</button>
+
+  <!-- Stock Summary -->
+  <p><strong>Total items in stock:</strong> {{ total_stock }}</p>
+
+  <!-- Product Table -->
+  <table class="table table-bordered">
+    <thead class="thead-dark">
+      <tr>
+        <th>Select</th>
+        <th>Name</th>
+        <th>Tamil Name</th>
+        <th>Romanized Name</th>
+        <th>Variants</th>
+        <th>Current Stock</th>
+        <th>Max Stock</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pdata in products %}
+        <tr>
+          <td><input type="checkbox" name="product_ids" value="{{ pdata.product.id }}"></td>
+          <td>{{ pdata.product.name }}</td>
+          <td>{{ pdata.product.tamil_name or '' }}</td>
+          <td>{{ pdata.product.romanized_name or '' }}</td>
+          <td>
+            <ul>
+              {% for variant in pdata.variants %}
+                <li>{{ variant.unit }} - ₹{{ variant.price }} | Stock: {{ variant.stock }} / {{ variant.initial_stock }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td>{{ pdata.current_stock }}</td>
+          <td>{{ pdata.max_stock }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</form>
+
+<!-- JavaScript to handle checkbox selection -->
+<script>
+  document.getElementById('bulkDeleteForm').addEventListener('submit', function (e) {
+    const checkedBoxes = document.querySelectorAll('input[name="product_ids"]:checked');
+    const ids = Array.from(checkedBoxes).map(cb => cb.value);
+    document.getElementById('selected_ids_input').value = ids.join(',');
+  });
+</script>
+
+{% endblock %}
