@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Sales Report PDF</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        h2 { text-align: center; }
+        .invoice { margin-bottom: 40px; }
+    </style>
+</head>
+<body>
+
+<h2>Sales Report</h2>
+<p>Generated on: {{ current_time }}</p>
+
+{% for invoice in invoices %}
+    <div class="invoice">
+        <h3>Bill No: {{ invoice.bill_no }}</h3>
+        <p>
+            Date: {{ invoice.date }}<br>
+            Customer: {{ invoice.customer_name }}<br>
+            Phone: {{ invoice.customer_phone }}
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.invoice_items %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.qty }}</td>
+                    <td>{{ item.price }}</td>
+                    <td>{{ item.subtotal }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p><strong>Total: ₹{{ invoice.total }}</strong></p>
+    </div>
+{% endfor %}
+
+</body>
+</html>

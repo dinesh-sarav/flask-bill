@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, make_response, jsonify
 from forms import ProductForm, CustomerForm
-from models import Product, ProductVariant, Customer, Invoice, InvoiceItem, User
+from models import Product, ProductVariant, Customer, Invoice, InvoiceItem, User,Settings
 from extensions import db
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
@@ -15,6 +15,8 @@ from flask_mail import Mail
 from flask_mail import Message
 from flask_migrate import Migrate
 import uuid
+import random
+from passlib.hash import scrypt
 
 class EmptyForm(FlaskForm):
     pass
@@ -26,8 +28,8 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your_email@gmail.com'         # Change this
-app.config['MAIL_PASSWORD'] = 'your_email_password_or_app'   # Use Gmail App Password if 2FA is enabled
+app.config['MAIL_USERNAME'] = 'your_email@gmail.com'         
+app.config['MAIL_PASSWORD'] = 'your_email_password_or_app' 
 app.config['MAIL_DEFAULT_SENDER'] = 'your_email@gmail.com'
 
 db.init_app(app)
@@ -55,7 +57,7 @@ def admin_required(f):
 @login_required
 @admin_required
 def admin_dashboard():
-    return render_template("admin_dashboard.html")  # or return your actual dashboard
+    return redirect (url_for('home'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -70,7 +72,7 @@ def login():
                 return redirect(url_for('login'))
             login_user(user)
             flash("Logged in successfully.", "success")
-            return redirect(url_for('admin_dashboard') if user.is_admin else url_for('home'))
+            return redirect(url_for('home') if user.is_admin else url_for('home'))
 
         flash("Invalid email or password.", "danger")
     return render_template('login.html')
@@ -111,7 +113,7 @@ def register():
     return render_template('register.html')
 
 @app.route('/verify/<token>')
-def verify_email(token):
+def verify_email():
     user = User.query.filter_by(verification_token=token).first()
     if not user:
         flash("Invalid or expired verification link", "danger")
@@ -129,36 +131,49 @@ def forgot_password():
         email = request.form['email']
         user = User.query.filter_by(email=email).first()
         if user:
-            token = str(uuid.uuid4())
-            user.reset_token = token
-            db.session.commit()
+            otp = str(random.randint(100000, 999999))
+            session['reset_email'] = email
+            session['otp'] = otp
 
-            reset_link = url_for('reset_password', token=token, _external=True)
-            from flask_mail import Message
-            msg = Message("Password Reset Link", recipients=[email])
-            msg.body = f"Click this link to reset your password: {reset_link}"
+            reset_url = url_for('reset_password', _external=True)
+            msg = Message("Password Reset", recipients=[email])
+            msg.body = f"Hi {user.username},\n\nYour OTP is: {otp}\nClick the link to reset your password:\n{reset_url}"
+
             mail.send(msg)
 
-            flash("A password reset link has been sent to your email.", "info")
-            return redirect(url_for('login'))
+            flash("OTP has been sent to your email.", "info")
+            return redirect(url_for('reset_password'))
         flash("Email not found.", "danger")
     return render_template('forgot_password.html')
 
-@app.route('/reset-password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    user = User.query.filter_by(reset_token=token).first()
-    if not user:
-        flash("Invalid or expired token", "danger")
-        return redirect(url_for('login'))
-
+@app.route('/reset_password', methods=['GET', 'POST'])
+def reset_password():
     if request.method == 'POST':
-        new_password = request.form['password']
-        user.set_password(new_password)
-        user.reset_token = None
-        db.session.commit()
-        flash("Password reset successfully. Please login.", "success")
-        return redirect(url_for('login'))
+        otp_input = request.form.get('otp')
+        password = request.form['password']
+        confirm = request.form['confirm_password']
 
+        if otp_input != session.get('otp'):
+            flash("Invalid OTP", "danger")
+            return redirect(url_for('reset_password'))
+
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return redirect(url_for('reset_password'))
+
+        email = session.get('reset_email')
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.password = generate_password_hash(password)
+            db.session.commit()
+
+            session.pop('reset_email', None)
+            session.pop('otp', None)
+
+            flash("Password reset successful. Please log in.", "success")
+            return redirect(url_for('login'))
+        else:
+            flash("User not found.", "danger")
     return render_template('reset_password.html')
 
 # ---------------- Home ----------------
@@ -221,6 +236,70 @@ def home():
         monthly_total=monthly_total
     )
 
+# ---------------- Product --------------------
+@app.route('/stock')
+@login_required
+def stock():
+    search_query = request.args.get('search', '').strip()
+    filter_type = request.args.get('filter', 'all')
+
+    settings = Settings.query.first()
+    low_stock_threshold = settings.low_stock_threshold if settings else 10  # fallback
+
+    products = Product.query.all()
+
+    # Filter products based on search
+    if search_query:
+        products = [
+            p for p in products if
+            search_query.lower() in (p.name or '').lower() or
+            search_query.lower() in (p.tamil_name or '').lower() or
+            search_query.lower() in (p.romanized_name or '').lower()
+        ]
+
+    # Flatten all variants
+    all_variants = [
+        variant for product in products for variant in product.variants
+    ]
+
+    if filter_type == 'low':
+        # Filter variants with stock less than threshold
+        filtered_variants = [v for v in all_variants if v.stock < low_stock_threshold]
+    elif filter_type == 'high':
+        filtered_variants = [v for v in all_variants if v.stock >= low_stock_threshold]
+    else:
+        filtered_variants = all_variants
+
+    # Re-group filtered variants by product
+    product_dict = {}
+    for variant in filtered_variants:
+        if variant.product_id not in product_dict:
+            product_dict[variant.product_id] = {
+                'product': variant.product,
+                'variants': []
+            }
+        product_dict[variant.product_id]['variants'].append(variant)
+
+    grouped_products = [
+        {
+            'product': data['product'],
+            'variants': data['variants'],
+            'current_stock': sum(v.stock for v in data['variants']),
+            'max_stock': sum(v.initial_stock or 0 for v in data['variants'])
+        }
+        for data in product_dict.values()
+    ]
+
+    total_stock = sum(p['current_stock'] for p in grouped_products)
+
+    return render_template(
+        'stock.html',
+        products=grouped_products,
+        total_stock=total_stock,
+        search_query=search_query,
+        filter_type=filter_type
+    )
+
 @app.route('/search_product')
 def search_product():
     query = request.args.get('q', '').strip().lower()
@@ -260,69 +339,6 @@ def search_product():
         monthly_total=db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= date.today().replace(day=1)).scalar() or 0
     )
 
-# ---------------- Product --------------------
-@app.route('/stock')
-@login_required
-def stock():
-    search_query = request.args.get('search', '').strip()
-    filter_type = request.args.get('filter', 'all')
-
-    products = Product.query.all()
-
-    # Filter products based on search
-    if search_query:
-        products = [
-            p for p in products if
-            search_query.lower() in (p.name or '').lower() or
-            search_query.lower() in (p.tamil_name or '').lower() or
-            search_query.lower() in (p.romanized_name or '').lower()
-        ]
-
-    # Flatten all variants
-    all_variants = [
-        variant for product in products for variant in product.variants
-    ]
-
-    LOW_STOCK_THRESHOLD = 10
-
-    if filter_type == 'low':
-        # Filter variants with stock less than threshold
-        filtered_variants = [v for v in all_variants if v.stock < LOW_STOCK_THRESHOLD]
-    elif filter_type == 'high':
-        filtered_variants = [v for v in all_variants if v.stock >= LOW_STOCK_THRESHOLD]
-    else:
-        filtered_variants = all_variants
-
-    # Re-group filtered variants by product
-    product_dict = {}
-    for variant in filtered_variants:
-        if variant.product_id not in product_dict:
-            product_dict[variant.product_id] = {
-                'product': variant.product,
-                'variants': []
-            }
-        product_dict[variant.product_id]['variants'].append(variant)
-
-    grouped_products = [
-        {
-            'product': data['product'],
-            'variants': data['variants'],
-            'current_stock': sum(v.stock for v in data['variants']),
-            'max_stock': sum(v.initial_stock or 0 for v in data['variants'])
-        }
-        for data in product_dict.values()
-    ]
-
-    total_stock = sum(p['current_stock'] for p in grouped_products)
-
-    return render_template(
-        'stock.html',
-        products=grouped_products,
-        total_stock=total_stock,
-        search_query=search_query,
-        filter_type=filter_type
-    )
-
 @app.route('/scan_barcode', methods=['POST'])
 @login_required # Ensure user is logged in
 def scan_barcode():
@@ -342,30 +358,57 @@ def scan_barcode():
         return redirect(url_for('home'))
 
 # ---------------- Add Product ----------------
+@app.route('/add_products', methods=['GET', 'POST'])
 @login_required
 @admin_required
-@app.route('/add_products', methods=['GET', 'POST'])
 def add_product():
     form = ProductForm()
-    if form.validate_on_submit():
-        product = Product(name=form.name.data.strip(), tamil_name=form.tamil_name.data.strip(),
-                          romanized_name=form.romanized_name.data.strip(), sold_by=form.sold_by.data.strip())
-        db.session.add(product)
-        db.session.flush() # Ensure product.id is available for variants
 
-        for variant_form in form.variants:
-            if variant_form.unit.data and variant_form.price.data:
-                variant = ProductVariant(
-                    product_id=product.id,
-                    unit=variant_form.unit.data.strip(),
-                    price=variant_form.price.data,
-                    stock=variant_form.stock.data,
-                    barcode=variant_form.barcode.data.strip() if variant_form.barcode.data else None
-                )
-                db.session.add(variant)
-        db.session.commit()
-        flash("Product with variants added!", "success")
-        return redirect(url_for('home'))
+    if request.method == 'POST':
+        # Validate basic product fields
+        if form.name.data and form.sold_by.data:
+            product = Product(
+                name=form.name.data.strip(),
+                tamil_name=form.tamil_name.data.strip(),
+                romanized_name=form.romanized_name.data.strip(),
+                sold_by=form.sold_by.data.strip()
+            )
+            db.session.add(product)
+            db.session.flush()  # get product.id before committing
+
+            # Loop over manually submitted variant fields
+            variant_index = 0
+            while f'variants-{variant_index}-unit' in request.form:
+                unit = request.form.get(f'variants-{variant_index}-unit', '').strip()
+                price = request.form.get(f'variants-{variant_index}-price')
+                stock = request.form.get(f'variants-{variant_index}-stock')
+                barcode = request.form.get(f'variants-{variant_index}-barcode', '').strip()
+
+                # Only add if required fields are present
+                if unit and price and stock:
+                    try:
+                        variant = ProductVariant(
+                            product_id=product.id,
+                            unit=unit,
+                            price=float(price),
+                            stock=float(stock),
+                            barcode=barcode if barcode else None
+                        )
+                        db.session.add(variant)
+                    except ValueError:
+                        flash(f"Invalid numeric value in variant {variant_index + 1}", "danger")
+                variant_index += 1
+
+            db.session.commit()
+            flash("Product with variants added!", "success")
+            return redirect(url_for('home'))
+        else:
+            flash("Product name and unit are required", "danger")
+
+    # Ensure one empty variant row shows up on GET
+    if request.method == 'GET' and not form.variants.entries:
+        form.variants.append_entry()
+
     return render_template('add_product.html', form=form)
 
 # ---------------- Edit Product ----------------
@@ -379,13 +422,13 @@ def edit_product(product_id):
 
     form = ProductForm(obj=product)
     if request.method == 'GET':
-        form.variants.entries.clear() # Clear existing entries from FlaskForm to populate with DB data
+        form.variants.entries.clear()
         for variant in product.variants:
             form.variants.append_entry({
                 'unit': variant.unit,
                 'price': variant.price,
                 'stock': variant.stock,
-                'barcode': variant.barcode # Include barcode here
+                'barcode': variant.barcode 
             })
 
     if form.validate_on_submit():
@@ -393,10 +436,7 @@ def edit_product(product_id):
         product.tamil_name = form.tamil_name.data.strip()
         product.romanized_name = form.romanized_name.data.strip()
         product.sold_by = form.sold_by.data.strip()
-        # product.barcode = form.barcode.data.strip() # Product-level barcode is less common if variants have them.
-                                                   # If product has a barcode, ensure form includes it and handle updates.
-
-        # Delete existing variants and re-add them
+        
         ProductVariant.query.filter_by(product_id=product.id).delete()
         for variant_form in form.variants:
             if variant_form.unit.data and variant_form.price.data: # Only add if essential fields are present
@@ -410,9 +450,9 @@ def edit_product(product_id):
                 db.session.add(variant)
         db.session.commit()
         flash("Product updated", "success")
-        return redirect(url_for('stock')) # Redirect to stock page after edit
+        return redirect(url_for('stock')) 
 
-    return render_template('edit_product.html', form=form, product=product) # Use 'edit_product.html' for clarity
+    return render_template('edit_product.html', form=form, product=product) 
 
 # ---------------- Delete Product ----------------
 @login_required
@@ -1037,18 +1077,14 @@ def sales_report():
     start = request.args.get('start')
     end = request.args.get('end')
 
-    query = Invoice.query
+    query = Invoice.query.options(joinedload(Invoice.customer))
     if start and end:
         try:
             start_dt = datetime.strptime(start, '%Y-%m-%d')
-            end_dt = datetime.strptime(end, '%Y-%m-%d')
-            # Adjust end_dt to include the entire end day
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            end_dt = datetime.strptime(end, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
             query = query.filter(Invoice.date.between(start_dt, end_dt))
         except ValueError:
             flash("Invalid date format. Please use YYYY-MM-DD.", "danger")
-            # Fallback to no date filter if invalid
-            query = Invoice.query
 
     invoices = query.order_by(Invoice.date.desc()).all()
     total_sales = sum(i.total for i in invoices)
@@ -1057,21 +1093,33 @@ def sales_report():
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
 
-    # Ensure func.date() is applied correctly for comparison with date objects
-    daily = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) == today).scalar() or 0
-    weekly = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= week_start).scalar() or 0
-    monthly = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= month_start).scalar() or 0
+    daily_total = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) == today).scalar() or 0
+    weekly_total = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= week_start).scalar() or 0
+    monthly_total = db.session.query(func.sum(Invoice.total)).filter(func.date(Invoice.date) >= month_start).scalar() or 0
 
-    return render_template('sales_report.html', invoices=invoices, total_sales=total_sales,
-                            daily_total=daily, weekly_total=weekly, monthly_total=monthly,
-                            selected_start=start, selected_end=end) # Pass selected dates back
+    daily_count = db.session.query(func.count(Invoice.id)).filter(func.date(Invoice.date) == today).scalar() or 0
+    weekly_count = db.session.query(func.count(Invoice.id)).filter(func.date(Invoice.date) >= week_start).scalar() or 0
+    monthly_count = db.session.query(func.count(Invoice.id)).filter(func.date(Invoice.date) >= month_start).scalar() or 0
+
+    return render_template(
+        'sales_report.html',
+        invoices=invoices,
+        total_sales=total_sales,
+        daily_total=daily_total,
+        weekly_total=weekly_total,
+        monthly_total=monthly_total,
+        daily_count=daily_count,
+        weekly_count=weekly_count,
+        monthly_count=monthly_count,
+        selected_start=start,
+        selected_end=end
+    )
 
 # ---------------- Download CSV/PDF ----------------
 @app.route('/download_sales_csv')
 @login_required
 @admin_required
 def download_sales_csv():
-    # Filter by date range if provided in the request args, similar to sales_report
     start = request.args.get('start')
     end = request.args.get('end')
     query = Invoice.query.options(joinedload(Invoice.customer))
@@ -1082,16 +1130,26 @@ def download_sales_csv():
             end_dt = datetime.strptime(end, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
             query = query.filter(Invoice.date.between(start_dt, end_dt))
         except ValueError:
-            pass # Ignore invalid dates, download all
+            pass  # Ignore invalid date filters
 
     invoices = query.order_by(Invoice.date.desc()).all()
+
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(['Invoice ID', 'Bill No', 'Customer Name', 'Customer Phone', 'Date', 'Total'])
+
     for i in invoices:
-        customer_name = i.customer.name if i.customer else 'N/A'
+        customer_name = i.customer.name if i.customer else 'Walk-in Customer'
         customer_phone = i.customer.phone if i.customer else 'N/A'
-        writer.writerow([i.id, i.bill_no, customer_name, customer_phone, i.date.strftime('%Y-%m-%d %H:%M:%S'), i.total])
+        writer.writerow([
+            i.id,
+            i.bill_no,
+            customer_name,
+            customer_phone,
+            i.date.strftime('%Y-%m-%d %H:%M:%S'),
+            i.total
+        ])
+
     response = make_response(output.getvalue())
     response.headers['Content-Disposition'] = 'attachment; filename=sales_report.csv'
     response.headers['Content-type'] = 'text/csv'
@@ -1099,12 +1157,13 @@ def download_sales_csv():
 
 @app.route('/download_sales_pdf')
 @login_required
-@admin_required
 def download_sales_pdf():
-    # Filter by date range if provided in the request args, similar to sales_report
     start = request.args.get('start')
     end = request.args.get('end')
-    query = Invoice.query.options(joinedload(Invoice.customer), joinedload(Invoice.items).joinedload(InvoiceItem.variant).joinedload(ProductVariant.product))
+    query = Invoice.query.options(
+        joinedload(Invoice.customer),
+        joinedload(Invoice.items).joinedload(InvoiceItem.variant).joinedload(ProductVariant.product)
+    )
 
     if start and end:
         try:
@@ -1112,35 +1171,41 @@ def download_sales_pdf():
             end_dt = datetime.strptime(end, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
             query = query.filter(Invoice.date.between(start_dt, end_dt))
         except ValueError:
-            pass # Ignore invalid dates, download all
+            pass  # fallback to all
 
     invoices = query.order_by(Invoice.date.desc()).all()
 
-    # Prepare data for PDF template
     invoices_data = []
     for invoice in invoices:
-        items_data = [{
-            'name': item.variant.product.name,
-            'qty': item.quantity,
-            'price': item.price,
-            'subtotal': item.quantity * item.price
-        } for item in invoice.items]
+        item_data = []
+        for item in invoice.items:
+            item_data.append({
+                'name': item.variant.product.name,
+                'qty': item.quantity,
+                'price': item.price,
+                'subtotal': item.quantity * item.price
+            })
+
         invoices_data.append({
             'invoice_id': invoice.id,
             'bill_no': invoice.bill_no,
-            'customer_name': invoice.customer.name if invoice.customer else 'Walk-in Customer',
+            'customer_name': invoice.customer.name if invoice.customer else 'Walk-in',
             'customer_phone': invoice.customer.phone if invoice.customer else 'N/A',
-            'date': invoice.date.strftime('%Y-%m-%d %H:%M:%S') if invoice.date else 'N/A',
+            'date': invoice.date.strftime('%Y-%m-%d %H:%M:%S'),
             'total': invoice.total,
-            'items': items_data
+            'invoice_items': item_data
         })
 
-    html = render_template('sales_report_pdf.html', invoices=invoices_data, current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    html = render_template('sales_report_pdf.html',
+                           invoices=invoices_data,
+                           current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
     result = BytesIO()
     pisa_status = pisa.CreatePDF(html, dest=result)
     if pisa_status.err:
-        flash(f"Error generating PDF: {pisa_status.err}", "danger")
+        flash("PDF generation failed", "danger")
         return "PDF generation failed", 500
+
     response = make_response(result.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'attachment; filename=sales_report.pdf'
@@ -1253,16 +1318,100 @@ def delete_customer(customer_id):
 @login_required
 @admin_required
 def settings():
-    settings_data = {
-        'business_name': 'My Store',
-        'business_phone': '9876543210',
-        'business_address': 'Main Street',
-        'invoice_prefix': 'INV2025-',
-        'tax_percentage': 5,
-        'invoice_footer': 'Thank you for shopping!',
-        'payment_methods': 'Cash, Card, UPI'
-    }
-    return render_template('settings.html', settings=settings_data,user=current_user)
+    settings = Settings.query.first()
+    admin = current_user
+
+    if not settings:
+        settings = Settings(
+            store_name="",
+            store_address="",
+            phone="",
+            gst_number="",
+            invoice_prefix="INV-",
+            low_stock_threshold=10,
+            currency_symbol="₹"
+        )
+        db.session.add(settings)
+        db.session.commit()
+
+    if request.method == 'POST':
+        new_email = request.form['admin_email']
+        existing_user = User.query.filter_by(email=new_email).first()
+        if existing_user and existing_user.id != admin.id:
+            flash("This email is already used by another account.", "danger")
+            return redirect(url_for('settings'))
+        
+        # Update settings
+        settings.store_name = request.form['store_name']
+        settings.store_address = request.form['store_address']
+        settings.phone = request.form['phone']
+        settings.gst_number = request.form['gst_number']
+        settings.invoice_prefix = request.form['invoice_prefix']
+        settings.low_stock_threshold = int(request.form['low_stock_threshold'])
+        settings.currency_symbol = request.form['currency_symbol']
+
+        # Update admin user fields
+        admin.username = request.form['admin_name']
+        admin.email = request.form['admin_email']
+        new_password = request.form['admin_password']
+        if new_password:
+            admin.set_password(new_password)
+
+        db.session.commit()
+        login_user(admin, fresh=True)
+        flash("Settings and admin details updated successfully!", "success")
+        return redirect(url_for('settings'))
+    
+    print("Admin name from DB:", admin.username)
+    return render_template("settings.html", settings=settings, admin=admin)
+
+@app.route('/update_stock/<int:variant_id>', methods=['POST'])
+@login_required
+@admin_required
+def update_stock(variant_id):
+    variant = ProductVariant.query.get_or_404(variant_id)
+    increment = int(request.form.get('increment', 1))  # default +1
+    variant.stock += increment
+    db.session.commit()
+    flash(f'Stock updated for variant {variant.unit}', 'success')
+    return redirect(url_for('stock'))
+
+@app.route('/add_stock_by_barcode_inline', methods=['POST'])
+@login_required
+@admin_required
+def add_stock_by_barcode_inline():
+    barcode = request.form.get('barcode', '').strip()
+    added_stock = request.form.get('added_stock', '').strip()
+
+    if not barcode or not added_stock:
+        flash("Please enter both barcode and stock quantity.", "danger")
+    else:
+        variant = ProductVariant.query.filter_by(barcode=barcode).first()
+        if not variant:
+            flash("No product found with this barcode.", "warning")
+        else:
+            try:
+                added_qty = float(added_stock)
+                variant.stock += added_qty
+                db.session.commit()
+                flash(f"✅ Added {added_qty} stock to {variant.product.name} ({variant.unit})", "success")
+            except ValueError:
+                flash("Invalid stock quantity", "danger")
+
+    return redirect(url_for('add_product'))
+
+#-----------------------------------------
+@app.route('/admin/verify_otp', methods=['GET', 'POST'])
+def admin_verify_otp():
+    if request.method == 'POST':
+        if request.form['otp'] == session.get('otp'):
+            flash("OTP verified. Please reset your password.", "success")
+            return redirect(url_for('admin_reset_password'))
+        else:
+            flash("Invalid OTP.", "danger")
+    return render_template('admin_verify_otp.html')
+
+#--------------------------------------
 
 if __name__ == '__main__':
     with app.app_context():

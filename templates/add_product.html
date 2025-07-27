@@ -1,122 +1,133 @@
 {% extends "base.html" %}
 
+{% block title %}Add Products{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Add New Product</h2>
-<form method="POST">
-    {{ form.csrf_token }}
-    <div class="mb-3">
-        {{ form.name.label(class="form-label") }}
-        {{ form.name(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.tamil_name.label(class="form-label") }}
-        {{ form.tamil_name(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.romanized_name.label(class="form-label") }}
-        {{ form.romanized_name(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.sold_by.label(class="form-label") }}
-        {{ form.sold_by(class="form-control") }}
+<div class="container" style="max-width: 900px;">
+    <div class="card p-4 mb-4 shadow-sm">
+        <h4 class="text-center mb-3">Add Stock to Existing Product by Barcode</h4>
+        <form method="POST" action="{{ url_for('add_stock_by_barcode_inline') }}" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label for="barcode" class="form-label">Barcode</label>
+                <input type="text" name="barcode" id="barcode" class="form-control" required>
+            </div>
+            <div class="col-md-5">
+                <label for="added_stock" class="form-label">Quantity to Add</label>
+                <input type="number" step="0.01" name="added_stock" id="added_stock" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-success w-100">➕ Add Stock</button>
+            </div>
+        </form>
     </div>
 
-    <h3>Variants</h3>
-    <div id="variants-container">
-        {% for variant_field in form.variants %}
-            <div class="card mb-2 p-3 variant-item">
-                <div class="row g-2">
-                    <div class="col-md-3">
-                        {{ variant_field.unit.label(class="form-label") }}
-                        {{ variant_field.unit(class="form-control") }}
-                    </div>
-                    <div class="col-md-3">
-                        {{ variant_field.price.label(class="form-label") }}
-                        {{ variant_field.price(class="form-control") }}
-                    </div>
-                    <div class="col-md-3">
-                        {{ variant_field.stock.label(class="form-label") }}
-                        {{ variant_field.stock(class="form-control") }}
-                    </div>
-                    <div class="col-md-2">
-                        {{ variant_field.barcode.label(class="form-label") }}
-                        {{ variant_field.barcode(class="form-control") }}
-                    </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="button" class="btn btn-danger w-100 remove-variant-btn">Remove</button>
-                    </div>
+    <div class="card p-4 shadow-sm">
+        <h4 class="text-center mb-3">Add New Product</h4>
+        <form method="POST">
+            {{ form.csrf_token }}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    {{ form.name.label(class="form-label") }}
+                    {{ form.name(class="form-control") }}
+                </div>
+                <div class="col-md-6">
+                    {{ form.tamil_name.label(class="form-label") }}
+                    {{ form.tamil_name(class="form-control") }}
+                </div>
+                <div class="col-md-6">
+                    {{ form.romanized_name.label(class="form-label") }}
+                    {{ form.romanized_name(class="form-control") }}
+                </div>
+                <div class="col-md-6">
+                    {{ form.sold_by.label(class="form-label") }}
+                    {{ form.sold_by(class="form-control") }}
                 </div>
             </div>
-        {% endfor %}
-    </div>
-    <button type="button" class="btn btn-secondary mt-3" id="add-variant-btn">Add Variant</button>
 
-    <button type="submit" class="btn btn-primary mt-4">Add Product</button>
-</form>
+            <h5 class="mt-4">Variants</h5>
+            <div id="variants-container">
+                {% for variant_field in form.variants %}
+                    {% set idx = loop.index0 %}
+                    <div class="card p-3 mb-3 variant-item">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label for="variants-{{ idx }}-unit" class="form-label">Unit</label>
+                                <input type="text" class="form-control" name="variants-{{ idx }}-unit"
+                                       id="variants-{{ idx }}-unit" value="{{ variant_field.form.unit.data or '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="variants-{{ idx }}-price" class="form-label">Price</label>
+                                <input type="number" step="0.01" class="form-control" name="variants-{{ idx }}-price"
+                                       id="variants-{{ idx }}-price" value="{{ variant_field.form.price.data or '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="variants-{{ idx }}-stock" class="form-label">Stock</label>
+                                <input type="number" step="0.01" class="form-control" name="variants-{{ idx }}-stock"
+                                       id="variants-{{ idx }}-stock" value="{{ variant_field.form.stock.data or '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="variants-{{ idx }}-barcode" class="form-label">Barcode</label>
+                                <input type="text" class="form-control" name="variants-{{ idx }}-barcode"
+                                       id="variants-{{ idx }}-barcode" value="{{ variant_field.form.barcode.data or '' }}">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="button" class="btn btn-danger remove-variant w-100">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="button" class="btn btn-dark" id="add-variant-btn">➕ Add Variant</button>
+                <button type="submit" class="btn btn-primary">📦 Add Product</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const variantsContainer = document.getElementById('variants-container');
-        const addVariantBtn = document.getElementById('add-variant-btn');
+    document.addEventListener('DOMContentLoaded', function () {
+        let variantIndex = {{ form.variants|length }};
+        const container = document.getElementById('variants-container');
+        const addBtn = document.getElementById('add-variant-btn');
 
-        let nextIndex = variantsContainer.children.length; // Start index from existing forms
-
-        // Function to create a new variant form row
         function createVariantRow(index) {
-            const div = document.createElement('div');
-            div.className = 'card mb-2 p-3 variant-item';
-            div.innerHTML = `
-                <div class="row g-2">
-                    <div class="col-md-3">
-                        <label for="variants-${index}-unit" class="form-label">Unit</label>
-                        <input class="form-control" id="variants-${index}-unit" name="variants-${index}-unit" type="text" value="">
-                    </div>
-                    <div class="col-md-3">
-                        <label for="variants-${index}-price" class="form-label">Price</label>
-                        <input class="form-control" id="variants-${index}-price" name="variants-${index}-price" type="number" step="0.01" value="">
-                    </div>
-                    <div class="col-md-3">
-                        <label for="variants-${index}-stock" class="form-label">Stock</label>
-                        <input class="form-control" id="variants-${index}-stock" name="variants-${index}-stock" type="number" step="0.01" value="">
-                    </div>
-                    <div class="col-md-2">
-                        <label for="variants-${index}-barcode" class="form-label">Barcode</label>
-                        <input class="form-control" id="variants-${index}-barcode" name="variants-${index}-barcode" type="text" value="">
-                    </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="button" class="btn btn-danger w-100 remove-variant-btn">Remove</button>
+            return `
+                <div class="card mb-3 p-3 variant-item">
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label" for="variants-${index}-unit">Unit</label>
+                            <input type="text" class="form-control" name="variants-${index}-unit" id="variants-${index}-unit">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="variants-${index}-price">Price</label>
+                            <input type="number" step="0.01" class="form-control" name="variants-${index}-price" id="variants-${index}-price">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="variants-${index}-stock">Stock</label>
+                            <input type="number" step="0.01" class="form-control" name="variants-${index}-stock" id="variants-${index}-stock">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="variants-${index}-barcode">Barcode</label>
+                            <input type="text" class="form-control" name="variants-${index}-barcode" id="variants-${index}-barcode">
+                        </div>
+                        <div class="col-md-1 d-flex align-items-end">
+                            <button type="button" class="btn btn-danger remove-variant w-100">Remove</button>
+                        </div>
                     </div>
                 </div>
             `;
-            return div;
         }
 
-        // Add Variant Button Click
-        addVariantBtn.addEventListener('click', function() {
-            const newRow = createVariantRow(nextIndex);
-            variantsContainer.appendChild(newRow);
-            nextIndex++;
+        addBtn.addEventListener('click', function () {
+            container.insertAdjacentHTML('beforeend', createVariantRow(variantIndex));
+            variantIndex++;
         });
 
-        // Remove Variant Button Click (Delegated event handling)
-        variantsContainer.addEventListener('click', function(event) {
-            if (event.target.classList.contains('remove-variant-btn')) {
-                event.target.closest('.variant-item').remove();
-                // Re-index remaining forms
-                Array.from(variantsContainer.children).forEach((row, i) => {
-                    row.querySelectorAll('input, select, textarea').forEach(input => {
-                        const oldName = input.name;
-                        const newName = oldName.replace(/variants-\d+-/, `variants-${i}-`);
-                        input.name = newName;
-                        const oldId = input.id;
-                        const newId = oldId.replace(/variants-\d+-/, `variants-${i}-`);
-                        input.id = newId;
-                        const oldFor = input.labels[0]?.htmlFor;
-                        if (oldFor) {
-                            input.labels[0].htmlFor = oldFor.replace(/variants-\d+-/, `variants-${i}-`);
-                        }
-                    });
-                });
+        container.addEventListener('click', function (e) {
+            if (e.target.classList.contains('remove-variant')) {
+                e.target.closest('.variant-item').remove();
             }
         });
     });

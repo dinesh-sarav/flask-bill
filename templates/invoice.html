@@ -83,7 +83,7 @@
         <div>TRUSTED QUALITY SHOPPING</div>
         <div>TEL NO: 22741234 / 1234432</div>
         <div>fssai NO : 1234567876543</div>
-        <div><b>GSTIN NO : 234GFD3456YHG54D</b></div>
+        <div><b>GSTIN NO : TEL NO: 22741234 / 1234432</b></div>
         <div class="bold">Wallet Bill</div>
     </div>
 
@@ -122,12 +122,16 @@
     </div>
 
     <!-- 💰 Payment Info -->
-    <div class="section">
+    <!--<div class="section">
         Amount Tendered: 0.00
         Balance: 0.00
         Total Discount: {{ invoice.discount or "0.00" }}
-    </div>
-
+    </div>-->
+<script>
+  window.onload = function() {
+    window.print();
+  };
+</script>
 </div>
 </body>
 </html>

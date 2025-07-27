@@ -3,28 +3,42 @@
 
 <h2>{{ filter_label }}</h2>
 
-<!-- Filter Buttons -->
-<div class="mb-3">
-  <a href="{{ url_for('stock', filter='all', search=search_query) }}" class="btn btn-secondary {% if filter_type == 'all' %}active{% endif %}">All</a>
-  <a href="{{ url_for('stock', filter='low', search=search_query) }}" class="btn btn-warning {% if filter_type == 'low' %}active{% endif %}">Low Stock</a>
-  <a href="{{ url_for('stock', filter='high', search=search_query) }}" class="btn btn-success {% if filter_type == 'high' %}active{% endif %}">High Stock</a>
+<!-- Top Row -->
+<div class="d-flex justify-content-between align-items-start flex-wrap mb-3">
+    <div class="text-center mt-3">
+        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">⬅ Back to Home</a>
+    </div>
+
+  <!-- Search Form with slight top margin -->
+  <form method="get" action="{{ url_for('stock') }}" class="d-flex align-items-center mb-2 mt-2" style="align-items: center;">
+    <input type="text" name="search" class="form-control me-2" placeholder="Search..." value="{{ search_query }}" style="min-width: 250px;">
+    <button class="btn btn-primary" type="submit">Search</button>
+  </form>
+
+  <!-- Right: Filter Buttons + Delete + Logo -->
+  <div class="d-flex flex-column align-items-end text-end">
+
+    <!-- Filter Buttons -->
+    <div class="btn-group mb-2" role="group">
+      <a href="{{ url_for('stock', filter='all', search=search_query) }}" class="btn btn-secondary {% if filter_type == 'all' %}active{% endif %}">All</a>
+      <a href="{{ url_for('stock', filter='low', search=search_query) }}" class="btn btn-warning {% if filter_type == 'low' %}active{% endif %}">Low Stock</a>
+      <a href="{{ url_for('stock', filter='high', search=search_query) }}" class="btn btn-success {% if filter_type == 'high' %}active{% endif %}">High Stock</a>
+    </div>
+
+    <!-- Delete Button -->
+    <form method="POST" action="{{ url_for('delete_product') }}" id="bulkDeleteForm" onsubmit="return confirm('Are you sure you want to delete selected products?');" class="mb-2">
+      <input type="hidden" name="selected_ids" id="selected_ids_input">
+      <button type="submit" class="btn btn-danger">Delete Selected</button>
+    </form>
+  </div>
+
 </div>
 
-<!-- Search Form -->
-<form method="get" action="{{ url_for('stock') }}" class="form-inline mb-3">
-  <input type="text" name="search" class="form-control mr-2" placeholder="Search by Name, Tamil, or Romanized" value="{{ search_query }}">
-  <button class="btn btn-primary">Search</button>
-</form>
+<!-- Stock Summary -->
+<p><strong>Total items in stock:</strong> {{ total_stock }}</p>
 
-<!-- Bulk Delete Form -->
-<form method="POST" action="{{ url_for('delete_product') }}" id="bulkDeleteForm" onsubmit="return confirm('Are you sure you want to delete selected products?');">
-  <input type="hidden" name="selected_ids" id="selected_ids_input">
-  <button type="submit" class="btn btn-danger mb-3">Delete Selected</button>
-
-  <!-- Stock Summary -->
-  <p><strong>Total items in stock:</strong> {{ total_stock }}</p>
-
-  <!-- Product Table -->
+<!-- Product Table -->
+<form id="productTableForm">
   <table class="table table-bordered">
     <thead class="thead-dark">
       <tr>
@@ -34,7 +48,6 @@
         <th>Romanized Name</th>
         <th>Variants</th>
         <th>Current Stock</th>
-        <th>Max Stock</th>
       </tr>
     </thead>
     <tbody>
@@ -47,19 +60,18 @@
           <td>
             <ul>
               {% for variant in pdata.variants %}
-                <li>{{ variant.unit }} - ₹{{ variant.price }} | Stock: {{ variant.stock }} / {{ variant.initial_stock }}</li>
+                <li>{{ variant.unit }} - ₹{{ variant.price }} | Barcode: {{variant.barcode}} </li>
               {% endfor %}
             </ul>
           </td>
           <td>{{ pdata.current_stock }}</td>
-          <td>{{ pdata.max_stock }}</td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
 </form>
 
-<!-- JavaScript to handle checkbox selection -->
+<!-- JavaScript for checkbox selection -->
 <script>
   document.getElementById('bulkDeleteForm').addEventListener('submit', function (e) {
     const checkedBoxes = document.querySelectorAll('input[name="product_ids"]:checked');

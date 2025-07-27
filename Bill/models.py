@@ -93,6 +93,16 @@ class User(db.Model, UserMixin):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+class Settings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    store_name = db.Column(db.String(100))
+    store_address = db.Column(db.String(200))
+    phone = db.Column(db.String(20))
+    gst_number = db.Column(db.String(30))
+    invoice_prefix = db.Column(db.String(10))
+    low_stock_threshold = db.Column(db.Integer, default=10)
+    currency_symbol = db.Column(db.String(5), default='₹')
+
 # --- NEW MODELS FOR MULTIPLE BILL SUPPORT ---
 class ActiveCart(db.Model):
     __tablename__ = 'active_cart'

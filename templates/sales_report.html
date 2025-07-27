@@ -1,121 +1,154 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Sales Report</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-    {% extends 'base.html' %}
-{% block title %}Sales Report{% endblock %}
+{% extends 'base.html' %}
 
 {% block content %}
-<div class="container py-4">
-    <h2 class="mb-4">📊 Sales Report</h2>
+<h2 class="mb-4">Sales Report</h2>
 
-    <!-- Filter & Export -->
-    <form method="get" class="row g-3 mb-4 align-items-end">
-        <div class="col-md-3">
-            <label for="start" class="form-label">From</label>
-            <input type="date" id="start" name="start" value="{{ start }}" class="form-control">
-        </div>
-        <div class="col-md-3">
-            <label for="end" class="form-label">To</label>
-            <input type="date" id="end" name="end" value="{{ end }}" class="form-control">
-        </div>
-        <div class="col-md-3">
-            <button type="submit" class="btn btn-primary w-100">Filter</button>
-        </div>
-        <div class="col-md-3 d-flex justify-content-end gap-2">
-            <a href="{{ url_for('download_sales_csv') }}" class="btn btn-outline-success">Download CSV</a>
-            <a href="{{ url_for('download_sales_pdf') }}" class="btn btn-outline-danger">Download PDF</a>
-        </div>
-    </form>
+<form method="get" class="row align-items-end g-2 mb-3">
 
-    <!-- Summary Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card text-center border-info">
-                <div class="card-body">
-                    <h5 class="card-title text-info">Today</h5>
-                    <p class="card-text fs-4">₹{{ daily_total }}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-center border-warning">
-                <div class="card-body">
-                    <h5 class="card-title text-warning">This Week</h5>
-                    <p class="card-text fs-4">₹{{ weekly_total }}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-center border-success">
-                <div class="card-body">
-                    <h5 class="card-title text-success">This Month</h5>
-                    <p class="card-text fs-4">₹{{ monthly_total }}</p>
-                </div>
+    <div class="col-auto">
+        <input type="text" id="searchInput" class="form-control" placeholder="🔍 Search by ID, Bill No, or Customer Name">
+    </div>
+
+    <!-- Sales Summary Dropdown -->
+    <div class="col-auto">
+        <div class="dropdown">
+            <button class="btn btn-outline-info dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                📈 Sales Summary
+            </button>
+            <div class="dropdown-menu p-3 shadow">
+                <strong>🟢 Today</strong><br>
+                Bills: {{ daily_count }}<br>
+                Sales: ₹{{ daily_total }}<br><hr class="my-2">
+
+                <strong>🟡 This Week</strong><br>
+                Bills: {{ weekly_count }}<br>
+                Sales: ₹{{ weekly_total }}<br><hr class="my-2">
+
+                <strong>🔵 This Month</strong><br>
+                Bills: {{ monthly_count }}<br>
+                Sales: ₹{{ monthly_total }}
             </div>
         </div>
     </div>
 
-    <!-- Invoice Table -->
-    <div class="table-responsive mb-5">
-        <table class="table table-bordered table-hover align-middle">
-            <thead class="table-dark text-center">
-                <tr>
-                    <th>Invoice ID</th>
-                    <th>Customer</th>
-                    <th>Date</th>
-                    <th>Total (₹)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for invoice in invoices %}
-                <tr>
-                    <td class="text-center">{{ invoice.id }}</td>
-                    <td>{{ invoice.customer.name }}</td>
-                    <td>{{ invoice.date|format_date }}</td>
-                    <td class="text-end">₹{{ invoice.total }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="col-auto">
+        <input type="date" name="start" value="{{ selected_start }}" class="form-control" placeholder="From">
+    </div>
+    <div class="col-auto">
+        <input type="date" name="end" value="{{ selected_end }}" class="form-control" placeholder="To">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Filter</button>
     </div>
 
-    <!-- Breakdown -->
-    <div class="row">
-        <div class="col-md-6 mb-4">
-            <h4 class="mb-3">🧑‍💼 Sales by Customer</h4>
-            <ul class="list-group">
-                {% for customer in customers %}
-                <li class="list-group-item d-flex justify-content-between">
-                    {{ customer.name }}
-                    <span class="badge bg-primary rounded-pill">₹{{ customer.total_sales }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-
-        <div class="col-md-6 mb-4">
-            <h4 class="mb-3">📦 Sales by Product</h4>
-            <ul class="list-group">
-                {% for product in product_sales %}
-                <li class="list-group-item d-flex justify-content-between">
-                    {{ product.name }}
-                    <span class="badge bg-success rounded-pill">₹{{ product.total }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+    <!-- Download Buttons -->
+    <div class="col-auto">
+        <a href="{{ url_for('download_sales_csv', start=selected_start, end=selected_end) }}" class="btn btn-outline-success">CSV</a>
+        <a href="{{ url_for('download_sales_pdf', start=selected_start, end=selected_end) }}" class="btn btn-outline-danger">PDF</a>
     </div>
 
-    <div class="text-center mt-5">
-        <a href="{{ url_for('home') }}" class="btn btn-secondary">⬅️ Back to Home</a>
-    </div>
+</form>
+
+<!-- Invoice Table -->
+<div class="table-responsive">
+    <table class="table table-bordered table-striped align-middle" id="invoiceTable">
+        <thead class="table-light">
+            <tr>
+                <th>ID</th>
+                <th id="billHeader" class="sortable">Bill No <span class="sort-icon">⇅</span></th>
+                <th>Customer</th>
+                <th>Date</th>
+                <th id="amountHeader" class="sortable">Amount <span id="sortIcon">⇅</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr>
+                <td>{{ invoice.id }}</td>
+                <td>{{ invoice.bill_no }}</td>
+                <td>
+                    {% if invoice.customer %}
+                        {{ invoice.customer.name }}<br>
+                        <small>{{ invoice.customer.phone }}</small>
+                    {% else %}
+                        Walk-in Customer
+                    {% endif %}
+                </td>
+                <td>{{ invoice.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>₹{{ "%.2f"|format(invoice.total) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <!--<tfoot>
+            <tr class="table-warning fw-bold">
+                <td colspan="4" class="text-end">Total Sales:</td>
+                <td>₹{{ "%.2f"|format(total_sales) }}</td>
+            </tr>
+        </tfoot>-->
+    </table>
 </div>
-{% endblock %}
 
-</body>
-</html>
+<!-- Optional: Add JS sorting on Amount -->
+<script>
+document.addEventListener("DOMContentLoaded", function () 
+{
+    const table = document.getElementById("invoiceTable");
+
+    function sortTableByColumn(columnIndex, numeric = false, ascending = true) {
+        const rows = Array.from(table.querySelectorAll("tbody tr"));
+
+        rows.sort((a, b) => {
+            const aVal = a.children[columnIndex].textContent.trim();
+            const bVal = b.children[columnIndex].textContent.trim();
+
+            const valA = numeric ? parseFloat(aVal.replace(/[^\d.]/g, "")) : aVal.toLowerCase();
+            const valB = numeric ? parseFloat(bVal.replace(/[^\d.]/g, "")) : bVal.toLowerCase();
+
+            if (valA < valB) return ascending ? -1 : 1;
+            if (valA > valB) return ascending ? 1 : -1;
+            return 0;
+        });
+
+        const tbody = table.querySelector("tbody");
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Sort Amount
+    const amountHeader = document.getElementById("amountHeader");
+    let amountAsc = true;
+    amountHeader.style.cursor = "pointer";
+    amountHeader.addEventListener("click", function () {
+        sortTableByColumn(4, true, amountAsc);
+        amountAsc = !amountAsc;
+    });
+
+    // Sort Bill No
+    const billHeader = document.getElementById("billHeader");
+    let billAsc = true;
+    billHeader.style.cursor = "pointer";
+    billHeader.addEventListener("click", function () {
+        sortTableByColumn(1, false, billAsc);
+        billAsc = !billAsc;
+    });
+});
+
+// Search Filter
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("keyup", function () 
+{
+    const filter = this.value.toLowerCase();
+    const rows = document.querySelectorAll("#invoiceTable tbody tr");
+
+    rows.forEach(row => {
+        const id = row.children[0].textContent.toLowerCase();
+        const bill = row.children[1].textContent.toLowerCase();
+        const customer = row.children[2].textContent.toLowerCase();
+
+        const match = id.includes(filter) || bill.includes(filter) || customer.includes(filter);
+        row.style.display = match ? "" : "none";
+    });
+});
+
+</script>
+
+{% endblock %}

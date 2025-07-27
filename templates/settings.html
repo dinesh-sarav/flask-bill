@@ -1,154 +1,94 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Settings</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-</head>
-<body style="background-color: #f5f5f5;">
-<div class="container mt-5">
-    <h2 class="mb-4">Settings</h2>
+{% extends "base.html" %}
+{% block content %}
 
-    <!-- 👤 Logged-in Admin Info -->
-    <div class="card mb-4 border-info">
-        <div class="card-header bg-info text-white">Admin Info</div>
-        <div class="card-body">
-            <p><strong>Username:</strong> {{ user.username }}</p>
-            <p><strong>Email:</strong> {{ user.email }}</p>
-            <p><strong>Role:</strong> {% if user.is_admin %}Admin{% else %}User{% endif %}</p>
-        </div>
-    </div>
+<h2 class="mb-4">Admin & Store Settings</h2>
 
-    <form method="POST" action="{{ url_for('settings') }}" enctype="multipart/form-data">
+<form method="POST" class="row g-4">
+  <!-- Admin Section -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h5 class="mb-0">Admin Account</h5>
+      </div>
+      <div class="card-body">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }} mt-3" role="alert">
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                 {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
               </div>
             {% endfor %}
           {% endif %}
         {% endwith %}
 
-        <div class="card mb-4">
-            <div class="card-header">Business Profile</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="business_name" class="form-label">Business Name:</label>
-                    <input type="text" class="form-control" id="business_name" name="business_name" value="{{ settings.get('business_name', '') }}">
-                </div>
-                <div class="mb-3">
-                    <label for="business_phone" class="form-label">Phone:</label>
-                    <input type="text" class="form-control" id="business_phone" name="business_phone" value="{{ settings.get('business_phone', '') }}">
-                </div>
-                <div class="mb-3">
-                    <label for="business_address" class="form-label">Address:</label>
-                    <textarea class="form-control" id="business_address" name="business_address">{{ settings.get('business_address', '') }}</textarea>
-                </div>
-                 <div class="mb-3">
-                    <label for="business_logo" class="form-label">Business Logo:</label>
-                    <input class="form-control" type="file" id="business_logo" name="business_logo" accept="image/*">
-                    {% if settings.get('business_logo_url') %}
-                        <small class="form-text text-muted">Current Logo: <img src="{{ settings.get('business_logo_url') }}" alt="Business Logo" style="max-height: 50px; margin-top: 5px;"></small>
-                    {% else %}
-                        <small class="form-text text-muted">No logo uploaded yet.</small>
-                    {% endif %}
-                </div>
-            </div>
+        <div class="mb-3">
+          <label>Name</label>
+          <input type="text" class="form-control" name="admin_name" value="{{ admin.username }}">
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header">Invoice Settings</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="invoice_prefix" class="form-label">Invoice Prefix:</label>
-                    <input type="text" class="form-control" id="invoice_prefix" name="invoice_prefix" value="{{ settings.get('invoice_prefix', '') }}">
-                </div>
-                <div class="mb-3">
-                    <label for="tax_percentage" class="form-label">Tax Percentage (%):</label>
-                    <input type="number" step="0.01" class="form-control" id="tax_percentage" name="tax_percentage" value="{{ settings.get('tax_percentage', 0) }}">
-                </div>
-                <div class="mb-3">
-                    <label for="default_due_days" class="form-label">Default Due Days:</label>
-                    <input type="number" class="form-control" id="default_due_days" name="default_due_days" value="{{ settings.get('default_due_days', 30) }}" min="0">
-                    <small class="form-text text-muted">Automatically sets invoice due date (e.g., 30 for Net 30).</small>
-                </div>
-                <div class="mb-3">
-                    <label for="currency_symbol" class="form-label">Currency Symbol:</label>
-                    <input type="text" class="form-control" id="currency_symbol" name="currency_symbol" value="{{ settings.get('currency_symbol', '₹') }}">
-                </div>
-                <div class="mb-3">
-                    <label for="currency_position" class="form-label">Currency Position:</label>
-                    <select class="form-select" id="currency_position" name="currency_position">
-                        <option value="before" {% if settings.get('currency_position') == 'before' %}selected{% endif %}>Before Amount (₹100)</option>
-                        <option value="after" {% if settings.get('currency_position') == 'after' %}selected{% endif %}>After Amount (100₹)</option>
-                    </select>
-                </div>
-                 <div class="mb-3">
-                    <label for="decimal_places" class="form-label">Decimal Places for Prices:</label>
-                    <input type="number" class="form-control" id="decimal_places" name="decimal_places" value="{{ settings.get('decimal_places', 2) }}" min="0" max="4">
-                </div>
-                <div class="mb-3">
-                    <label for="invoice_accent_color" class="form-label">Invoice Accent Color:</label>
-                    <input type="color" class="form-control form-control-color" id="invoice_accent_color" name="invoice_accent_color" value="{{ settings.get('invoice_accent_color', '#0d6efd') }}" title="Choose your invoice accent color">
-                </div>
-                <div class="mb-3">
-                    <label for="invoice_footer" class="form-label">Footer Note (Optional):</label>
-                    <textarea class="form-control" id="invoice_footer" name="invoice_footer">{{ settings.get('invoice_footer', '') }}</textarea>
-                </div>
-            </div>
+        <div class="mb-3">
+          <label>Email</label>
+          <input type="email" class="form-control form-control-sm" name="admin_email" value="{{ admin.email }}" readonly>
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header">Payment Settings</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="payment_methods" class="form-label">Accepted Payment Methods (Comma Separated):</label>
-                    <input type="text" class="form-control" id="payment_methods" name="payment_methods" value="{{ settings.get('payment_methods', '') }}">
-                </div>
-                <div class="mb-3">
-                    <label for="default_payment_terms" class="form-label">Default Payment Terms:</label>
-                    <textarea class="form-control" id="default_payment_terms" name="default_payment_terms">{{ settings.get('default_payment_terms', 'Payment due within 30 days of invoice date.') }}</textarea>
-                    <small class="form-text text-muted">Appears on all new invoices unless overridden.</small>
-                </div>
-                <div class="mb-3">
-                    <label for="stripe_secret_key" class="form-label">Stripe API Key (Secret):</label>
-                    <input type="password" class="form-control" id="stripe_secret_key" name="stripe_secret_key" value="{{ settings.get('stripe_secret_key', '') }}" placeholder="sk_test_********************">
-                    <small class="form-text text-muted">Used for payment gateway integration.</small>
-                </div>
-            </div>
+        <div class="mb-3">
+          <label>Password</label>
+          <input type="password" class="form-control form-control-sm" name="admin_password" value="******" readonly>
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header">Email & Notification Settings</div>
-            <div class="card-body">
-                <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="send_invoice_emails" name="send_invoice_emails" {% if settings.get('send_invoice_emails') %}checked{% endif %}>
-                    <label class="form-check-label" for="send_invoice_emails">Automatically send invoices via email upon creation</label>
-                </div>
-                <div class="mb-3">
-                    <label for="overdue_reminder_frequency" class="form-label">Send Overdue Reminders:</label>
-                    <select class="form-select" id="overdue_reminder_frequency" name="overdue_reminder_frequency">
-                        <option value="none" {% if settings.get('overdue_reminder_frequency') == 'none' %}selected{% endif %}>None</option>
-                        <option value="weekly" {% if settings.get('overdue_reminder_frequency') == 'weekly' %}selected{% endif %}>Weekly</option>
-                        <option value="bi_weekly" {% if settings.get('overdue_reminder_frequency') == 'bi_weekly' %}selected{% endif %}>Bi-Weekly</option>
-                        <option value="monthly" {% if settings.get('overdue_reminder_frequency') == 'monthly' %}selected{% endif %}>Monthly</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="invoice_email_subject" class="form-label">Invoice Email Subject Line:</label>
-                    <input type="text" class="form-control" id="invoice_email_subject" name="invoice_email_subject" value="{{ settings.get('invoice_email_subject', '') }}">
-                    <small class="form-text text-muted">Use [Business Name], [Client Name], [Invoice Number], [Invoice Total] for dynamic values.</small>
-                </div>
-                <div class="mb-3">
-                    <label for="invoice_email_body" class="form-label">Invoice Email Body:</label>
-                    <textarea class="form-control" id="invoice_email_body" name="invoice_email_body" rows="6">{{ settings.get('invoice_email_body', '') }}</textarea>
-                    <small class="form-text text-muted">Use [Business Name], [Client Name], [Invoice Number], [Invoice Total] for dynamic values.</small>
-                </div>
-            </div>
+        <a href="{{ url_for('forgot_password') }}" class="btn btn-sm btn-warning">Change Email or Password</a>
+        <button type="submit" class="btn btn-sm btn-success mt-2 float-end">Save Admin Info</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Store Settings -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h5 class="mb-0">Store Settings</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label>Store Name</label>
+          <input type="text" name="store_name" class="form-control form-control-sm" value="{{ settings.store_name }}" required>
         </div>
 
-        <button type="submit" class="btn btn-primary w-100">Save Settings</button>
-    </form>
-</div>
-</body>
-</html>
+        <div class="mb-3">
+          <label>Store Address</label>
+          <textarea name="store_address" class="form-control form-control-sm" required>{{ settings.store_address }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label>Phone</label>
+          <input type="text" name="phone" class="form-control form-control-sm" value="{{ settings.phone }}">
+        </div>
+
+        <div class="mb-3">
+          <label>GST Number</label>
+          <input type="text" name="gst_number" class="form-control form-control-sm" value="{{ settings.gst_number }}">
+        </div>
+
+        <div class="mb-3">
+          <label>Invoice Prefix</label>
+          <input type="text" name="invoice_prefix" class="form-control form-control-sm" value="{{ settings.invoice_prefix }}">
+        </div>
+
+        <div class="mb-3">
+          <label>Low Stock Threshold</label>
+          <input type="number" name="low_stock_threshold" class="form-control form-control-sm" value="{{ settings.low_stock_threshold }}">
+        </div>
+
+        <div class="mb-3">
+          <label>Currency Symbol</label>
+          <input type="text" name="currency_symbol" class="form-control form-control-sm" value="{{ settings.currency_symbol }}">
+        </div>
+
+        <button type="submit" class="btn btn-sm btn-primary mt-2">Save Store Settings</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% endblock %}

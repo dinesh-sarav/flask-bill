@@ -25,7 +25,7 @@
                                 <ul class="mt-2">
                                     {% for variant in product.variants %}
                                         <li class="d-flex justify-content-between align-items-center">
-                                            <span>{{ variant.unit }} - ₹{{ variant.price | round(2) }} </span>
+                                            <span>{{ variant.unit }} - ₹{{ variant.price | round(2) }} | {{ variant.stock }}</span>
                                             <form action="{{ url_for('add_to_cart_with_quantity') }}" method="POST" class="d-flex">
                                                 <input type="hidden" name="variant_id" value="{{ variant.id }}">
                                                 <input type="number" name="quantity" value="1" min="1" class="form-control form-control-sm me-2" style="width: 70px;">

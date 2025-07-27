@@ -6,11 +6,21 @@ class VariantForm(FlaskForm):
     unit = StringField("Unit (e.g. 500g, 1kg, packet)", validators=[DataRequired()])
     price = FloatField("Price", validators=[DataRequired()])
     stock = FloatField('Stock', validators=[DataRequired()])
-    
+    barcode = StringField('Barcode')
+
 class ProductForm(FlaskForm):
-    name = StringField("Product Name", validators=[DataRequired()])
+    name = StringField ("Product Name", validators=[DataRequired()])
     tamil_name = StringField('Tamil Name', validators=[optional()])
+    romanized_name = StringField('Tamil Name', validators=[optional()])
     variants = FieldList(FormField(VariantForm), min_entries=1)
+    sold_by = SelectField('Unit', choices=[
+        ('kg', 'kg'),
+        ('liter', 'liter'),
+        ('piece', 'piece'),
+        ('pack', 'pack'),
+        ('box', 'box')
+    ], validators=[DataRequired()])
+    #barcode = StringField ("Barcode Number", validators=[DataRequired()])
     submit = SubmitField("Save Product")
 
 class ProductVariantForm(FlaskForm):
