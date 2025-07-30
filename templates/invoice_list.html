@@ -4,14 +4,10 @@
 <h2 class="mb-4">All Invoices</h2>
 
 <div class="mb-3">
-    <form action="{{ url_for('all_invoices') }}" method="GET" class="d-flex">
-        <input type="text" name="search" class="form-control me-2" placeholder="Search by Bill No, Customer Name/Phone" value="{{ search_query }}">
-        <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Search</button>
-        {% if search_query %}
-            <a href="{{ url_for('all_invoices') }}" class="btn btn-secondary ms-2"><i class="bi bi-x-circle me-1"></i> Clear</a>
-        {% endif %}
-    </form>
+    <input type="text" id="liveSearchInput" class="form-control form-control-sm w-50" 
+           placeholder="Search invoices..." style="max-width: 600px;">
 </div>
+
 
 {% if invoices %}
     <div class="table-responsive">
@@ -30,7 +26,7 @@
                 <tr>
                     <td>{{ invoice.bill_no }}</td>
                     <td>{{ invoice.customer.name if invoice.customer else 'Walk-in Customer' }}</td>
-                    <td>{{ invoice.display_date }}</td> {# Use display_date here #}
+                    <td>{{ invoice.display_date }}</td>
                     <td>₹{{ invoice.total | float | round(2) }}</td>
                     <td>
                         <a href="{{ url_for('generate_invoice', invoice_id=invoice.id) }}" target="_blank" class="btn btn-info btn-sm me-2" title="View/Print Bill">
@@ -46,10 +42,38 @@
                 {% endfor %}
             </tbody>
         </table>
+        <p id="noResultsMessage" class="text-danger" style="display: none;">No matching invoices found.</p>
     </div>
 {% else %}
     <div class="alert alert-info" role="alert">
         No invoices found.
     </div>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('liveSearchInput');
+    const tableRows = document.querySelectorAll('tbody tr');
+    const noResults = document.getElementById('noResultsMessage');
+
+    input.addEventListener('keyup', function () {
+        const query = input.value.toLowerCase();
+        let anyVisible = false;
+
+        tableRows.forEach(row => {
+            const billNo = row.children[0].innerText.toLowerCase();
+            const customer = row.children[1].innerText.toLowerCase();
+            const date = row.children[2].innerText.toLowerCase();
+            const total = row.children[3].innerText.toLowerCase();
+
+            const show = billNo.includes(query) || customer.includes(query) || date.includes(query) || total.includes(query);
+            row.style.display = show ? '' : 'none';
+            if (show) anyVisible = true;
+        });
+
+        noResults.style.display = anyVisible ? 'none' : '';
+    });
+});
+</script>
+
 {% endblock %}

@@ -17,9 +17,13 @@ from flask_migrate import Migrate
 import uuid
 import random
 from passlib.hash import scrypt
+from itsdangerous import URLSafeTimedSerializer
 
 class EmptyForm(FlaskForm):
     pass
+
+def get_serializer():
+    return URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
 app = Flask(__name__, template_folder='../templates')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -28,9 +32,9 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your_email@gmail.com'         
-app.config['MAIL_PASSWORD'] = 'your_email_password_or_app' 
-app.config['MAIL_DEFAULT_SENDER'] = 'your_email@gmail.com'
+app.config['MAIL_USERNAME'] = 'dhiyashanthuvan@gmail.com'         
+app.config['MAIL_PASSWORD'] = 'pjnuuqcffywokfrs' 
+app.config['MAIL_DEFAULT_SENDER'] = 'dhiyashanthuvan@gmail.com'
 
 db.init_app(app)
 mail = Mail(app)
@@ -87,9 +91,9 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
 
         if User.query.filter_by(email=email).first():
             flash("Email already exists", "danger")
@@ -113,7 +117,7 @@ def register():
     return render_template('register.html')
 
 @app.route('/verify/<token>')
-def verify_email():
+def verify_email(token):
     user = User.query.filter_by(verification_token=token).first()
     if not user:
         flash("Invalid or expired verification link", "danger")
@@ -131,50 +135,50 @@ def forgot_password():
         email = request.form['email']
         user = User.query.filter_by(email=email).first()
         if user:
-            otp = str(random.randint(100000, 999999))
-            session['reset_email'] = email
-            session['otp'] = otp
+            serializer = get_serializer()
+            token = serializer.dumps(user.email, salt='password-reset')
+            user.reset_token = token
+            db.session.commit()
 
-            reset_url = url_for('reset_password', _external=True)
+            reset_url = url_for('reset_password', token=token, _external=True)
             msg = Message("Password Reset", recipients=[email])
-            msg.body = f"Hi {user.username},\n\nYour OTP is: {otp}\nClick the link to reset your password:\n{reset_url}"
-
+            #msg.body = f"Hi {user.username},\n\nYour OTP is: {otp}\nClick the link to reset your password:\n{reset_url}"
+            msg.body = f"Hi {user.username},\n\nClick the link below to reset your password:\n{reset_url}"
             mail.send(msg)
 
-            flash("OTP has been sent to your email.", "info")
-            return redirect(url_for('reset_password'))
+            flash("Password reset email sent. check your inbox.", "info")
+            return redirect(url_for('login'))
+        
         flash("Email not found.", "danger")
     return render_template('forgot_password.html')
 
-@app.route('/reset_password', methods=['GET', 'POST'])
-def reset_password():
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    serializer = get_serializer()
+    try:
+        email = serializer.loads(token, salt='password-reset', max_age=3600)
+    except Exception:
+        flash("Invalid or expired token", "danger")
+        return redirect(url_for('forgot_password'))
+
+    user = User.query.filter_by(email=email).first()
+
     if request.method == 'POST':
-        otp_input = request.form.get('otp')
         password = request.form['password']
         confirm = request.form['confirm_password']
 
-        if otp_input != session.get('otp'):
-            flash("Invalid OTP", "danger")
-            return redirect(url_for('reset_password'))
-
         if password != confirm:
             flash("Passwords do not match.", "danger")
-            return redirect(url_for('reset_password'))
+            return redirect(url_for('reset_password', token=token))
 
-        email = session.get('reset_email')
-        user = User.query.filter_by(email=email).first()
-        if user:
-            user.password = generate_password_hash(password)
-            db.session.commit()
+        user.set_password(password)
+        user.reset_token = None
+        db.session.commit()
 
-            session.pop('reset_email', None)
-            session.pop('otp', None)
-
-            flash("Password reset successful. Please log in.", "success")
-            return redirect(url_for('login'))
-        else:
-            flash("User not found.", "danger")
-    return render_template('reset_password.html')
+        flash("Password reset successful. Please log in.", "success")
+        return redirect(url_for('login'))
+        
+    return render_template('reset_password.html', token=token)
 
 # ---------------- Home ----------------
 @app.route('/')
@@ -365,18 +369,26 @@ def add_product():
     form = ProductForm()
 
     if request.method == 'POST':
-        # Validate basic product fields
         if form.name.data and form.sold_by.data:
-            product = Product(
-                name=form.name.data.strip(),
-                tamil_name=form.tamil_name.data.strip(),
-                romanized_name=form.romanized_name.data.strip(),
-                sold_by=form.sold_by.data.strip()
-            )
-            db.session.add(product)
-            db.session.flush()  # get product.id before committing
+            # Check if product already exists by name (case-insensitive match)
+            existing_product = Product.query.filter(
+                db.func.lower(Product.name) == form.name.data.strip().lower()
+            ).first()
 
-            # Loop over manually submitted variant fields
+            if existing_product:
+                product = existing_product
+                flash(f"Product '{product.name}' exists. Adding new variants to it.", "info")
+            else:
+                product = Product(
+                    name=form.name.data.strip(),
+                    tamil_name=form.tamil_name.data.strip(),
+                    romanized_name=form.romanized_name.data.strip(),
+                    sold_by=form.sold_by.data.strip()
+                )
+                db.session.add(product)
+                db.session.flush()  # Ensure product.id is available
+
+            # Handle variants
             variant_index = 0
             while f'variants-{variant_index}-unit' in request.form:
                 unit = request.form.get(f'variants-{variant_index}-unit', '').strip()
@@ -384,9 +396,16 @@ def add_product():
                 stock = request.form.get(f'variants-{variant_index}-stock')
                 barcode = request.form.get(f'variants-{variant_index}-barcode', '').strip()
 
-                # Only add if required fields are present
                 if unit and price and stock:
                     try:
+                        # Optional: check for duplicate barcode if needed
+                        if barcode:
+                            existing_barcode = ProductVariant.query.filter_by(barcode=barcode).first()
+                            if existing_barcode:
+                                flash(f"Barcode '{barcode}' already exists. Skipped variant {variant_index + 1}.", "warning")
+                                variant_index += 1
+                                continue
+
                         variant = ProductVariant(
                             product_id=product.id,
                             unit=unit,
@@ -397,15 +416,19 @@ def add_product():
                         db.session.add(variant)
                     except ValueError:
                         flash(f"Invalid numeric value in variant {variant_index + 1}", "danger")
+                else:
+                    flash(f"Variant {variant_index + 1} missing required fields. Skipped.", "warning")
+
                 variant_index += 1
 
             db.session.commit()
-            flash("Product with variants added!", "success")
+
+            flash(f"Product '{product.name}' updated with new variants!", "success")
             return redirect(url_for('home'))
+
         else:
             flash("Product name and unit are required", "danger")
 
-    # Ensure one empty variant row shows up on GET
     if request.method == 'GET' and not form.variants.entries:
         form.variants.append_entry()
 
